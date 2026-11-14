@@ -17,7 +17,15 @@ uvicorn backend.main:create_app --factory
 
 Open http://localhost:8000 and choose **Try sample notes**. Approve Hash table and Chaining, then approve their relationship. Select any concept or relationship to inspect its source. Reload to see the persisted map.
 
-To enable PDF uploads, set `OPENAI_API_KEY` in the server environment before starting Uvicorn. Optionally set `GRAPHU_MODEL` to a compatible Structured Outputs model (default `gpt-4o-mini`) and `GRAPHU_DB` to a writable SQLite path (default `data/graphu.sqlite3`). See `.env.example` for names. Uvicorn does not load that example file.
+To enable PDF uploads from your Mac, stop any Graphu server already running on port 8000, then run this from the repo root:
+
+```sh
+.venv/bin/python -m backend.start
+```
+
+Paste your OpenAI API key at the hidden Terminal prompt. Graphu keeps the key in the server process for that session. Refresh http://localhost:8000, choose a text-based PDF, and confirm that its extracted text can be sent to OpenAI.
+
+To configure an unattended server, set `OPENAI_API_KEY` in the server environment before starting Uvicorn. Optionally set `GRAPHU_MODEL` to a compatible Structured Outputs model (default `gpt-4o-mini`) and `GRAPHU_DB` to a writable SQLite path (default `data/graphu.sqlite3`). See `.env.example` for names. Uvicorn does not load that example file.
 
 For frontend development, keep the backend running and use `npm --prefix web run dev`. To install the built PWA, serve it over HTTPS or localhost and use the browser’s install or Add to Home Screen action where available. Import, review and graph access require a connection to the backend.
 
