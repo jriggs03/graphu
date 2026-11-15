@@ -1,6 +1,7 @@
 # Feature: Connect my notes
 
 **For:** whoever builds this next (teammate or Claude Code). Read `CLAUDE.md` first; everything there still applies.
+**Interactive reference:** `docs/design/prototype-bridges.html` (open it in a browser).
 **Goal:** a student drops in a stack of handwritten notes where topics are scattered across pages. Graphu finds how those topics connect and proposes the links, so the graph comes out connected instead of a pile of separate islands.
 
 ## Why this is needed
