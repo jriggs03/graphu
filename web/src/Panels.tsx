@@ -80,30 +80,6 @@ function Chip({ concept, pending, tools }: { concept: Concept; pending: boolean;
   </button>
 }
 
-/**
- * The AI-drawn picture for a concept. It is shown through an <img>, which cannot run
- * scripts or load anything from outside, whatever the SVG contains.
- */
-function Picture({ concept, tools }: { concept: Concept; tools: Tools }) {
-  const [busy, setBusy] = useState(false)
-  const draw = () => {
-    setBusy(true)
-    void tools.act(() => api.drawVisual(tools.notebook.id, concept.id)).finally(() => setBusy(false))
-  }
-  if (!concept.visual) {
-    if (!tools.ai || concept.status !== 'approved') return null
-    return <button className="draw" disabled={busy} onClick={draw}>{busy ? 'Drawing…' : 'Draw a picture of this'}</button>
-  }
-  return <figure className="picture">
-    <img alt={concept.visual.caption} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(concept.visual.svg)}`} />
-    <figcaption>
-      {concept.visual.caption} <span className="tag">AI illustration</span>
-      <small>Drawn by AI from your quotes. It is not in your sources.</small>
-      {tools.ai && <button disabled={busy} onClick={draw}>{busy ? 'Drawing…' : 'Redraw'}</button>}
-    </figcaption>
-  </figure>
-}
-
 export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tools }) {
   const { notebook, order } = tools
   const byId = new Map(notebook.concepts.map(item => [item.id, item]))
@@ -125,10 +101,18 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
     <div className="where">{!goal ? 'Exploring'
       : step >= 0 ? <>Step {step + 1} of {order.length} toward <b>{goal.label}</b></>
         : <>Not needed for <b>{goal.label}</b></>}</div>
-    <h2>{concept.symbol && <code>{concept.symbol}</code>}{concept.label}</h2>
+    {/* Order follows docs/design/prototype-autoencoders.html:
+        heading → snippet → quotes → Learn first / Used by → I want to learn this. */}
+    <h3 className="concept-name">{concept.symbol && <code>{concept.symbol}</code>}{concept.label}</h3>
+    {concept.heading
+      ? <h2 className="heading">{concept.heading} <span className="tag ai">AI summary</span></h2>
+      : <h2 className="heading">{concept.label}</h2>}
     {!approved && <p className="callout new">New suggestion. It is not part of your graph until you approve it.</p>}
     {concept.user_added && <p className="callout unsourced"><b>Not in slide !</b> You added this yourself. No source in this graphbook backs it.</p>}
-    <Picture concept={concept} tools={tools} />
+    {concept.snippet && <figure className="snippet">
+      <pre>{concept.snippet.text}</pre>
+      <figcaption>slide {concept.snippet.page} · {concept.snippet.source}</figcaption>
+    </figure>}
     <Quotes evidence={concept.evidence} tools={tools} />
 
     <div className="rel"><h3>Learn first</h3>
@@ -139,6 +123,14 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
       {usedBy.map(edge => <Chip key={edge.id} concept={byId.get(edge.from)!} pending={edge.status === 'pending'} tools={tools} />)}
       {!usedBy.length && <span className="none">Nothing else in this map yet.</span>}
     </div>
+    {approved && <div className="goal-actions">
+      {notebook.target === concept.id
+        ? <button onClick={() => void tools.act(() => api.setTarget(notebook.id, null))}>Clear goal</button>
+        : <button onClick={() => void tools.act(() => api.setTarget(notebook.id, concept.id))}>I want to learn this</button>}
+      {next && <button className="primary" onClick={() => tools.select({ kind: 'concept', id: next.id })}>
+        {step >= 0 ? `Next · ${next.label} →` : `Back to the path · 1. ${next.label}`}
+      </button>}
+    </div>}
     {approved && <div className="link-buttons">
       <button onClick={() => tools.startLink(concept.id, 'dependent')}>+ Link what to learn first</button>
       <button onClick={() => tools.startLink(concept.id, 'prerequisite')}>+ Link what builds on this</button>
@@ -149,14 +141,6 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
       {linkable.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select>}
 
-    {approved && <div className="goal-actions">
-      {notebook.target === concept.id
-        ? <button onClick={() => void tools.act(() => api.setTarget(notebook.id, null))}>Clear goal</button>
-        : <button onClick={() => void tools.act(() => api.setTarget(notebook.id, concept.id))}>I want to learn this</button>}
-      {next && <button className="primary" onClick={() => tools.select({ kind: 'concept', id: next.id })}>
-        {step >= 0 ? `Next · ${next.label} →` : `Back to the path · 1. ${next.label}`}
-      </button>}
-    </div>}
 
     <label className="symbol-edit">Symbol on the map
       <input key={concept.id + concept.symbol} defaultValue={concept.symbol} maxLength={12} placeholder="e.g. ∫ or MST"

@@ -402,3 +402,12 @@ button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color:
 .edge-label { font-size: 10px; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; pointer-events: none; }
 .edge-label.dim { opacity: .3; }
 @media (max-width: 480px) { .paired-quotes { grid-template-columns: 1fr; } }
+
+/* ---------- concept panel: name, AI heading, snippet (docs/design/prototype-autoencoders.html) ---------- */
+.concept-name { font-size: 13.5px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: -6px; }
+.concept-name code { font-size: 13px; background: var(--code); border-radius: 6px; padding: 1px 6px; color: var(--ink); }
+.detail h2.heading { display: block; font-size: 21px; line-height: 1.25; }
+.tag.ai { vertical-align: middle; margin: 0 0 0 4px; background: var(--accent-soft); color: var(--accent-deep); white-space: nowrap; }
+.snippet { border: 0; padding: 0; margin: 0; }
+.snippet pre { margin: 0; font-family: var(--mono); font-size: 15.5px; line-height: 1.5; background: var(--code); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.snippet figcaption { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; }

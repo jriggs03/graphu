@@ -176,7 +176,7 @@ function view(notebook: NotebookRec): Notebook {
     if (!concept) {
       concept = {
         id, label: claim.title, symbol: claim.symbol, status: 'pending', user_added: false,
-        evidence: [], comment: notebook.comments[id] ?? '', visual: null,
+        evidence: [], comment: notebook.comments[id] ?? '', visual: null, heading: '', snippet: null,
       }
       concepts.set(id, concept)
     }
@@ -453,10 +453,6 @@ export const sampleBackend: Backend = {
     else delete notebook.symbols[concept]
     touch(notebook)
     return view(notebook)
-  },
-
-  async drawVisual() {
-    throw new ApiError(422, 'Pictures are drawn by AI, which needs the Graphu server. This copy runs in your browser only.')
   },
 
   async resetSample() {

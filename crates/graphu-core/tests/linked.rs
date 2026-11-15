@@ -8,7 +8,7 @@ fn setup(g: &mut Graphu) -> (String, String, String, LinkedCandidate) {
     for (source, title, quote) in [("a", "Optimization", A), ("b", "Gradient", B)] {
         let result = g.add_document(&id, NewDocument {
             source_id: source.into(), name: format!("{source}.txt"), pages: vec![quote.into()],
-            items: vec![Candidate { title: title.into(), target: "".into(), relation: "".into(), page: 1, quote: quote.into(), symbol: None }],
+            items: vec![Candidate { title: title.into(), target: "".into(), relation: "".into(), page: 1, quote: quote.into(), symbol: None, heading: None, snippet: None }],
             extracted: true, ..NewDocument::default()
         }).unwrap();
         batches.push(result.batch_id.unwrap());

@@ -74,6 +74,8 @@ struct ClaimRow {
     target: String,
     relation: String,
     symbol: String,
+    heading: String,
+    snippet: String,
     page: i64,
     quote: String,
     status: Status,
@@ -98,6 +100,12 @@ impl Graphu {
                 "This database belongs to the Python backend. Point GRAPHU_DB at a different file.".into()));
         }
         conn.execute_batch(SCHEMA)?;
+        // Databases made before headings and snippets existed gain the two columns here.
+        for column in ["heading", "snippet"] {
+            if !exists(&conn, "SELECT 1 FROM pragma_table_info('claims') WHERE name = ?1", params![column])? {
+                conn.execute_batch(&format!("ALTER TABLE claims ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))?;
+            }
+        }
         Ok(Self { conn })
     }
 
@@ -577,6 +585,8 @@ fn add_doc(conn: &Connection, notebook: &str, kind: &str, source_id: &str, name:
         }
         insert_claim(conn, notebook, batch, Some(source_id), &item.title, &item.target, &item.relation,
             item.symbol.as_deref().unwrap_or(""), item.page, &item.quote, Status::Pending)?;
+        conn.execute("UPDATE claims SET heading = ?2, snippet = ?3 WHERE id = ?1", params![
+            conn.last_insert_rowid(), item.heading.as_deref().unwrap_or(""), item.snippet.as_deref().unwrap_or("")])?;
         count += 1;
     }
     Ok(AddResult { name: name.into(), batch_id: Some(batch.to_string()), duplicate: false, count, dropped, extracted: true, note: note.into() })
@@ -653,11 +663,12 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
     let name_of = |source: &Option<String>| source.as_ref().and_then(|key| source_name.get(key)).cloned().unwrap_or_default();
 
     let mut statement = conn.prepare(
-        "SELECT id, batch_id, source_id, title, target, relation, symbol, page, quote, status
+        "SELECT id, batch_id, source_id, title, target, relation, symbol, page, quote, status, heading, snippet
          FROM claims WHERE notebook_id = ?1 ORDER BY id")?;
     let rows: Vec<ClaimRow> = statement.query_map(params![id], |row| Ok(ClaimRow {
         id: row.get(0)?, batch_id: row.get(1)?, source_id: row.get(2)?, title: row.get(3)?, target: row.get(4)?,
         relation: row.get(5)?, symbol: row.get(6)?, page: row.get(7)?, quote: row.get(8)?,
+        heading: row.get(10)?, snippet: row.get(11)?,
         status: Status::parse(&row.get::<_, String>(9)?),
     }))?.collect::<rusqlite::Result<_>>()?;
 
@@ -708,7 +719,7 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             concepts.push(Concept {
                 id: key.clone(), label: claim.title.clone(), symbol: claim.symbol.clone(), status: Status::Pending,
                 user_added: false, evidence: Vec::new(), comment: comments.get(&key).cloned().unwrap_or_default(),
-                visual: visuals.get(&key).cloned(),
+                visual: visuals.get(&key).cloned(), heading: String::new(), snippet: None,
             });
             concepts.len() - 1
         });
@@ -719,6 +730,13 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
         }
         if concept.symbol.is_empty() {
             concept.symbol = claim.symbol.clone();
+        }
+        // The summary and the snippet come from the first claim that has them.
+        if concept.heading.is_empty() {
+            concept.heading = claim.heading.clone();
+        }
+        if concept.snippet.is_none() && !claim.snippet.is_empty() {
+            concept.snippet = Some(Snippet { text: claim.snippet.clone(), page: claim.page, source: name_of(&claim.source_id) });
         }
         if claim.source_id.is_some() {
             concept.evidence.push(evidence_of(claim));

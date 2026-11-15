@@ -39,6 +39,10 @@ export type Concept = {
   comment: string
   /** A small AI-drawn picture. An illustration, not source evidence. */
   visual: { svg: string; caption: string } | null
+  /** One plain sentence written by the AI. Shown with an "AI summary" tag. May be empty. */
+  heading: string
+  /** A formula or line of code that was found on the cited page. */
+  snippet: { text: string; page: number; source: string } | null
 }
 
 /** `from` relies on `to`: `from` is the dependent, `to` is the prerequisite. */
@@ -157,8 +161,6 @@ export interface Backend {
   setTarget(id: string, concept: string | null): Promise<Notebook>
   /** Choose the short symbol drawn in a concept's node. Empty goes back to the proposed one. */
   setSymbol(id: string, concept: string, symbol: string): Promise<Notebook>
-  /** Ask the AI to draw (or redraw) a small picture for a concept. Needs the server and a key. */
-  drawVisual(id: string, concept: string): Promise<Notebook>
   resetSample(): Promise<void>
 }
 

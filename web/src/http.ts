@@ -62,7 +62,6 @@ export const httpBackend: Backend = {
   setComment: (id, concept, text) => request('PUT', `${at(id)}/comment`, { concept, text }),
   setTarget: (id, concept) => request('PUT', `${at(id)}/target`, { concept }),
   setSymbol: (id, concept, symbol) => request('PUT', `${at(id)}/symbol`, { concept, symbol }),
-  drawVisual: (id, concept) => request('POST', `${at(id)}/visual`, { concept }),
 
   async resetSample() {
     throw new ApiError(405, 'This workspace is stored on the server, so it cannot be reset from here.')

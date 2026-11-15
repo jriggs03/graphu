@@ -101,6 +101,14 @@ export function search(notebook: Notebook, query: string): Match[] {
       matches.push({ id: concept.id, why: 'Name' })
       continue
     }
+    if (concept.snippet?.text.toLowerCase().includes(q)) {
+      matches.push({ id: concept.id, why: `Formula · ${concept.snippet.text}` })
+      continue
+    }
+    if (concept.heading.toLowerCase().includes(q)) {
+      matches.push({ id: concept.id, why: `AI summary · ${around(concept.heading)}` })
+      continue
+    }
     const quote = concept.evidence.find(item => item.quote.toLowerCase().includes(q))
     if (quote) {
       matches.push({ id: concept.id, why: `Quote · “${around(quote.quote)}”` })
