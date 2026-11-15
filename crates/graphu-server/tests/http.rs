@@ -203,8 +203,46 @@ async fn upload_is_read_proposed_and_grounded() {
     assert_eq!(again["results"][0]["duplicate"], true);
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 
+    // Without a key, a picture is refused with a reason (this fake returns no picture anyway).
+    let offline = server(None);
+    let (status, error) = call(&offline, Method::POST, "/api/notebooks/sample-calculus/visual", Some(json!({ "concept": "integrals" }))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(error["detail"].as_str().unwrap().contains("AI key"));
+    assert_eq!(call(&app, Method::POST, &format!("{base}/visual"), Some(json!({ "concept": "nope" }))).await.0, StatusCode::NOT_FOUND);
+
     // A file that cannot be used comes back as a message, not a batch.
     let (status, error) = upload(&app, &format!("{base}/documents?name=data.bin"), vec![0, 1, 2]).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(error["detail"].as_str().unwrap().contains("cannot read this kind of file"));
+}
+
+#[tokio::test]
+async fn picture_is_drawn_checked_and_saved() {
+    let claude = Router::new().route("/v1/messages", axum::routing::post(|axum::Json(body): axum::Json<Value>| async move {
+        // Asked about "Limits", this fake misbehaves and returns a picture with a script in it.
+        let bad = body["messages"][0]["content"][0]["text"].as_str().unwrap().contains("Limits");
+        let svg = if bad { "<svg><script>alert(1)</script></svg>" } else { "<svg viewBox=\"0 0 320 180\"><rect width=\"10\" height=\"10\"/></svg>" };
+        let picture = json!({ "svg": svg, "caption": "Area under a curve." });
+        axum::Json(json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": picture.to_string() }] }))
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, claude).await.unwrap() });
+    let settings = graphu_ingest::Settings { api_key: Some("test".into()), model: "claude-sonnet-5-5".into(), base_url, transcribe_cmd: None };
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let app = graphu_server::app(graphu, None, settings);
+
+    let path = "/api/notebooks/sample-calculus/visual";
+    let (status, notebook) = call(&app, Method::POST, path, Some(json!({ "concept": "integrals" }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let concept = notebook["concepts"].as_array().unwrap().iter().find(|c| c["id"] == "integrals").unwrap();
+    assert_eq!(concept["visual"]["caption"], "Area under a curve.");
+    assert!(concept["visual"]["svg"].as_str().unwrap().starts_with("<svg"));
+
+    // An unsafe picture from the model is refused and nothing is saved.
+    let (status, _) = call(&app, Method::POST, path, Some(json!({ "concept": "limits" }))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, notebook) = call(&app, Method::GET, "/api/notebooks/sample-calculus", None).await;
+    assert!(notebook["concepts"].as_array().unwrap().iter().find(|c| c["id"] == "limits").unwrap()["visual"].is_null());
 }

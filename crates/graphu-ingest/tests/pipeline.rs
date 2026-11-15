@@ -203,3 +203,14 @@ async fn refusals_and_api_errors_are_reported_plainly() {
     let (settings, _) = fake_claude(|_| (200, json!({ "stop_reason": "max_tokens", "content": [] }))).await;
     assert!(matches!(ingest(&settings, "n.txt", "", &[], NOTES.as_bytes()).await, Err(IngestError::Unreadable(text)) if text.contains("too long")));
 }
+
+#[tokio::test]
+async fn a_picture_is_drawn_from_the_concept_and_its_quotes() {
+    let (settings, seen) = fake_claude(|_| answer(json!({ "svg": "<svg viewBox=\"0 0 320 180\"></svg>", "caption": "A tree." }))).await;
+    let picture = graphu_ingest::illustrate(&settings, "Heap", &[NOTES.to_string()]).await.unwrap();
+    assert_eq!((picture.svg.as_str(), picture.caption.as_str()), ("<svg viewBox=\"0 0 320 180\"></svg>", "A tree."));
+    let seen = seen.lock().unwrap();
+    let prompt = seen[0].1["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(prompt.contains("Heap") && prompt.contains("each parent is larger"));
+    assert!(seen[0].1["system"].as_str().unwrap().contains("no scripts"));
+}

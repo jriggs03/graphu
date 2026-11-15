@@ -108,6 +108,11 @@ struct Comment {
 }
 
 #[derive(Deserialize)]
+struct Draw {
+    concept: String,
+}
+
+#[derive(Deserialize)]
 struct Target {
     concept: Option<String>,
 }
@@ -128,6 +133,7 @@ pub fn app(graphu: Graphu, web: Option<PathBuf>, settings: Settings) -> Router {
         .route("/notebooks/{id}/edges", post(add_edge))
         .route("/notebooks/{id}/comment", put(set_comment))
         .route("/notebooks/{id}/target", put(set_target))
+        .route("/notebooks/{id}/visual", post(draw_visual))
         .fallback(|| async { Failure(StatusCode::NOT_FOUND, "No such API route.".into()) })
         .layer(DefaultBodyLimit::max(MAX_BYTES))
         .with_state(Arc::new(AppState { graphu: Mutex::new(graphu), settings }));
@@ -232,4 +238,21 @@ async fn set_comment(State(state): State<Shared>, Path(id): Path<String>, Json(b
 
 async fn set_target(State(state): State<Shared>, Path(id): Path<String>, Json(body): Json<Target>) -> Reply<Notebook> {
     run(&state, |graphu| graphu.set_target(&id, body.concept.as_deref()))
+}
+
+/// Ask Claude for a small picture of one concept, based on its approved quotes, and save it.
+async fn draw_visual(State(state): State<Shared>, Path(id): Path<String>, Json(body): Json<Draw>) -> Reply<Notebook> {
+    if state.settings.api_key.is_none() {
+        return Err(Failure(StatusCode::UNPROCESSABLE_ENTITY, "Drawing a picture needs an AI key on the server.".into()));
+    }
+    let Json(notebook) = run(&state, |graphu| graphu.get_notebook(&id))?;
+    let concept = notebook.concepts.iter().find(|concept| concept.id == body.concept)
+        .ok_or_else(|| Failure(StatusCode::NOT_FOUND, "Concept not found.".into()))?;
+    let quotes: Vec<String> = concept.evidence.iter().filter(|item| item.status == Status::Approved)
+        .take(6).map(|item| item.quote.clone()).collect();
+    let picture = graphu_ingest::illustrate(&state.settings, &concept.label, &quotes).await.map_err(|error| match error {
+        graphu_ingest::AiError::Unavailable(text) => Failure(StatusCode::BAD_GATEWAY, text),
+        graphu_ingest::AiError::Declined(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
+    })?;
+    run(&state, |graphu| graphu.set_visual(&id, &body.concept, &picture.svg, &picture.caption))
 }

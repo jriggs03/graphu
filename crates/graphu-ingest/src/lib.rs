@@ -17,7 +17,7 @@ pub mod read;
 use graphu_core::Candidate;
 use read::Kind;
 
-pub use claude::AiError;
+pub use claude::{illustrate, AiError, Illustration};
 
 /// Largest file accepted.
 pub const MAX_BYTES: usize = 25 * 1024 * 1024;

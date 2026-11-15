@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS claims (
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected'))
 );
 CREATE INDEX IF NOT EXISTS claims_by_notebook ON claims(notebook_id);
+CREATE TABLE IF NOT EXISTS visuals (
+    notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL,
+    svg TEXT NOT NULL, caption TEXT NOT NULL,
+    PRIMARY KEY (notebook_id, concept_id)
+);
 CREATE TABLE IF NOT EXISTS comments (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, text TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
@@ -306,6 +311,32 @@ impl Graphu {
         self.get_notebook(notebook)
     }
 
+    /// Save the AI-drawn picture for a concept, replacing any earlier one.
+    /// The picture is refused if it could run code or load anything from outside.
+    pub fn set_visual(&mut self, notebook: &str, concept: &str, svg: &str, caption: &str) -> Result<Notebook> {
+        let svg = svg.trim();
+        let lower = svg.to_lowercase();
+        let unsafe_parts = ["<script", "<foreignobject", "javascript:", "<iframe", "<image", "href=\"http"];
+        // " on" followed by a letter and "=" would be an event handler such as onload=.
+        let handler = lower.split(" on").skip(1).any(|rest| {
+            let name: String = rest.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+            !name.is_empty() && rest[name.len()..].trim_start().starts_with('=')
+        });
+        if !lower.starts_with("<svg") || svg.chars().count() > 30_000
+            || unsafe_parts.iter().any(|part| lower.contains(part)) || handler {
+            return Err(Error::Invalid("That picture could not be used.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        if !view(&tx, notebook)?.concepts.iter().any(|item| item.id == concept) {
+            return Err(Error::NotFound("Concept not found.".into()));
+        }
+        let caption: String = normalize(caption).chars().take(200).collect();
+        tx.execute("INSERT OR REPLACE INTO visuals VALUES (?1, ?2, ?3, ?4)", params![notebook, concept, svg, caption])?;
+        touch(&tx, notebook)?;
+        tx.commit()?;
+        self.get_notebook(notebook)
+    }
+
     /// Set (or clear) the concept the student wants to learn.
     pub fn set_target(&mut self, notebook: &str, concept: Option<&str>) -> Result<Notebook> {
         let tx = self.conn.transaction()?;
@@ -520,6 +551,11 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
     let comments: HashMap<String, String> =
         statement.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
 
+    let mut statement = conn.prepare("SELECT concept_id, svg, caption FROM visuals WHERE notebook_id = ?1")?;
+    let visuals: HashMap<String, Visual> = statement
+        .query_map(params![id], |row| Ok((row.get(0)?, Visual { svg: row.get(1)?, caption: row.get(2)? })))?
+        .collect::<rusqlite::Result<_>>()?;
+
     let evidence_of = |claim: &ClaimRow| Evidence {
         claim_id: claim.id, batch_id: claim.batch_id.to_string(), source_id: claim.source_id.clone().unwrap_or_default(),
         source: name_of(&claim.source_id), page: claim.page, quote: claim.quote.clone(), status: claim.status,
@@ -540,6 +576,7 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             concepts.push(Concept {
                 id: key.clone(), label: claim.title.clone(), symbol: claim.symbol.clone(), status: Status::Pending,
                 user_added: false, evidence: Vec::new(), comment: comments.get(&key).cloned().unwrap_or_default(),
+                visual: visuals.get(&key).cloned(),
             });
             concepts.len() - 1
         });

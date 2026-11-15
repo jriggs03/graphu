@@ -56,6 +56,13 @@ pub struct Evidence {
     pub status: Status,
 }
 
+/// A small AI-drawn picture for a concept. It is an illustration, not source evidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Visual {
+    pub svg: String,
+    pub caption: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Concept {
     pub id: String,
@@ -67,6 +74,7 @@ pub struct Concept {
     pub user_added: bool,
     pub evidence: Vec<Evidence>,
     pub comment: String,
+    pub visual: Option<Visual>,
 }
 
 /// `from` relies on `to`: `from` is the dependent, `to` is the prerequisite.

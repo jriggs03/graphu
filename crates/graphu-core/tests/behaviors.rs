@@ -265,3 +265,27 @@ fn refuses_a_database_from_the_python_backend() {
     assert_eq!(tables, 2);
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn a_concept_can_carry_a_safe_picture() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let picture = "<svg viewBox=\"0 0 320 180\" xmlns=\"http://www.w3.org/2000/svg\"><circle cx=\"40\" cy=\"40\" r=\"20\"/><text x=\"10\" y=\"90\">position on the curve</text></svg>";
+    let notebook = graphu.set_visual(CALC, "integrals", picture, "  Area under   a curve ").unwrap();
+    let visual = notebook.concepts.iter().find(|c| c.id == "integrals").unwrap().visual.clone().unwrap();
+    assert_eq!((visual.svg.as_str(), visual.caption.as_str()), (picture, "Area under a curve"));
+    assert!(notebook.concepts.iter().find(|c| c.id == "limits").unwrap().visual.is_none());
+
+    // Anything that could run code or reach outside is refused.
+    for bad in [
+        "<svg><script>alert(1)</script></svg>",
+        "<svg onload=\"alert(1)\"></svg>",
+        "<svg><a href=\"javascript:alert(1)\">x</a></svg>",
+        "<svg><image href=\"https://example.com/x.png\"/></svg>",
+        "<svg><foreignObject><div/></foreignObject></svg>",
+        "<p>not a picture</p>",
+    ] {
+        assert_eq!(graphu.set_visual(CALC, "integrals", bad, "").unwrap_err().status(), 422, "{bad}");
+    }
+    assert_eq!(graphu.set_visual(CALC, "no such concept", picture, "").unwrap_err().status(), 404);
+}
