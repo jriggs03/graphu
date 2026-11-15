@@ -138,3 +138,37 @@ export function layout(
   }
   return Object.fromEntries(pos)
 }
+
+/**
+ * Push overlapping circles apart. `pinned` (the node under the pointer) never moves, so
+ * dragging one node into another shoves the other out of the way, and that one can shove
+ * the next. Returns the same object when nothing overlapped.
+ */
+export function separate(
+  positions: Record<string, Point>, nodes: { id: string; r: number }[], pinned?: string,
+): Record<string, Point> {
+  const placed = nodes.filter(node => positions[node.id])
+  let next = positions
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false
+    for (let a = 0; a < placed.length; a++) {
+      for (let b = a + 1; b < placed.length; b++) {
+        const p = next[placed[a].id]
+        const q = next[placed[b].id]
+        const dx = q.x - p.x || 0.01
+        const dy = q.y - p.y || 0.01
+        const distance = Math.hypot(dx, dy)
+        const overlap = placed[a].r + placed[b].r + GAP / 2 - distance
+        if (overlap <= 0.01) continue
+        if (next === positions) next = { ...positions }
+        // The pinned node keeps its place; otherwise both give way equally.
+        const shareA = placed[a].id === pinned ? 0 : placed[b].id === pinned ? 1 : 0.5
+        next[placed[a].id] = { x: p.x - dx / distance * overlap * shareA, y: p.y - dy / distance * overlap * shareA }
+        next[placed[b].id] = { x: q.x + dx / distance * overlap * (1 - shareA), y: q.y + dy / distance * overlap * (1 - shareA) }
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  return next
+}

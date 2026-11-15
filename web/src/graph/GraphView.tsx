@@ -33,18 +33,26 @@ type Gesture =
   | { kind: 'edge'; id: string; startX: number; startY: number; moved: boolean }
   | { kind: 'pan'; startX: number; startY: number; origin: View; moved: boolean }
 
-/** Break a label over at most two lines of similar length. */
+/** Break a label over up to three lines of similar length, so it fits inside a circle. */
 function lines(label: string) {
   const words = label.split(' ')
   if (words.length === 1 || label.length <= 9) return [label]
+  const join = (from: number, to: number) => words.slice(from, to).join(' ')
   let best = [label]
   let bestWidth = label.length
-  for (let cut = 1; cut < words.length; cut++) {
-    const pair = [words.slice(0, cut).join(' '), words.slice(cut).join(' ')]
-    const width = Math.max(pair[0].length, pair[1].length)
+  const consider = (candidate: string[]) => {
+    const width = Math.max(...candidate.map(line => line.length))
     if (width < bestWidth) {
-      best = pair
+      best = candidate
       bestWidth = width
+    }
+  }
+  for (let cut = 1; cut < words.length; cut++) consider([join(0, cut), join(cut, words.length)])
+  if (label.length > 22) {
+    for (let first = 1; first < words.length - 1; first++) {
+      for (let second = first + 1; second < words.length; second++) {
+        consider([join(0, first), join(first, second), join(second, words.length)])
+      }
     }
   }
   return best
@@ -200,7 +208,7 @@ export function GraphView(props: Props) {
           const longest = Math.max(...text.map(line => line.length))
           let symbolSize = node.symbol
             ? Math.min(node.tier === 3 ? 24 : 19, 1.6 * node.r / (node.symbol.length * 0.62)) : 0
-          let labelSize = Math.max(8, Math.min(node.tier === 3 ? 15 : 13, 1.75 * node.r / (longest * 0.55)))
+          let labelSize = Math.max(8, Math.min(node.tier === 3 ? 15 : 13, (text.length > 2 ? 1.55 : 1.75) * node.r / (longest * 0.55)))
           // Keep symbol plus label inside the circle.
           const squeeze = Math.min(1, 1.4 * node.r / (symbolSize + text.length * labelSize * 1.15))
           symbolSize *= squeeze

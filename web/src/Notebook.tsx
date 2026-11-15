@@ -3,7 +3,7 @@ import { api } from './api'
 import type { Claim, Notebook, SamplePack, Status } from './api'
 import { GraphView } from './graph/GraphView'
 import type { GraphEdge, GraphNode, Selection } from './graph/GraphView'
-import { layout } from './graph/layout'
+import { layout, separate } from './graph/layout'
 import { RADIUS, need, route, search, tiers } from './graph/model'
 import type { Pair, Point } from './graph/model'
 import { ConceptPanel, EdgePanel, HistoryPanel, ReviewPanel, claimText } from './Panels'
@@ -77,8 +77,9 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   useEffect(() => {
     if (!graph) return
     setPositions(prior => {
-      if (graph.nodes.every(node => prior[node.id])) return prior
-      const next = layout(graph.nodes, graph.all, prior)
+      // Sizes change as the graph grows, so nodes that now touch are nudged apart.
+      const next = graph.nodes.every(node => prior[node.id]) ? separate(prior, graph.nodes) : layout(graph.nodes, graph.all, prior)
+      if (next === prior) return prior
       localStorage.setItem(positionKey(id), JSON.stringify(next))
       return next
     })
@@ -196,7 +197,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       {graph.nodes.length ? <GraphView nodes={graph.nodes} edges={graph.edges} positions={positions}
         selected={selected} matches={matchSet} need={graph.needSet} steps={graph.steps} target={notebook.target}
         fitKey={`${id}:${fitCount}`} onSelect={select}
-        onMove={(key, point) => setPositions(prior => ({ ...prior, [key]: point }))}
+        onMove={(key, point) => setPositions(prior => separate({ ...prior, [key]: point }, graph.nodes, key))}
         onMoveEnd={() => setPositions(prior => { localStorage.setItem(positionKey(id), JSON.stringify(prior)); return prior })} />
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
           <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
