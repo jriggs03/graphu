@@ -2,6 +2,12 @@
 
 Graphu helps college students connect concepts across lecture PDFs. It proposes concepts and relationships, shows a document name, page number and supporting quote for each, and adds them to the map after review.
 
+## Status of the redesign
+
+The frontend in `web/` is the new design from `docs/design/`. For now it runs entirely in the browser on built-in sample notes: `web/src/api.ts` is the only module that talks to a backend, and it is currently answered by `web/src/sample/store.ts` (localStorage). No server or API key is needed, and files you add are recorded as a batch but not read. To try it, run `npm --prefix web run dev` and open http://localhost:5173, or build with `npm --prefix web run build` and host `web/dist` as a static site.
+
+The Python backend below still works and still passes its tests, but the new frontend does not call it. It stays as the safety net until the Rust server exposes the API in `api.ts`.
+
 ## Run locally
 
 Use Python 3.12 and Node.js 22.13 or newer within the 22.x line.
