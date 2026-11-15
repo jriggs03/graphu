@@ -1,5 +1,7 @@
 # Graphu
 
+**Live:** https://3-12-190-201.sslip.io (sample only; see `deploy/README.md`)
+
 Graphu helps college students connect concepts across lecture PDFs. It proposes concepts and relationships, shows a document name, page number and supporting quote for each, and adds them to the map after review.
 
 ## Status of the rewrite
