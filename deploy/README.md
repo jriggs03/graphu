@@ -29,15 +29,17 @@ The image must be built on an ARM machine (an Apple Silicon Mac is one), because
 
 ## Turn on reading uploads
 
-There is no sign-in, so with a key set anyone with the link can spend it. Set a spend limit in the Claude Console first. Then, on the server:
+With a key set, anyone with the link can spend it. Set a monthly limit in the Claude Console first. Then, from the repo on the Mac:
 
 ```sh
-cd ~/graphu/deploy
-nano .env                      # put the key after ANTHROPIC_API_KEY=
-sudo docker compose up -d      # restarts Graphu with the key
+deploy/set-key.sh
 ```
 
-To turn it off again, empty that line and run the last command again.
+It asks for the key at a hidden prompt, stores it on the server, and restarts Graphu. Run it again and press Enter with nothing typed to remove the key.
+
+## Who sees what
+
+There is no sign-in. On the first visit the site asks for a name and the browser makes up a random id. Each id has its own SQLite file in the `deploy_graphu-data` volume under `users/`, so people only see their own graphbooks. The id lives in that browser: another device or a cleared browser starts fresh. Graphbooks made before this change are still in the old shared file, `graphu.sqlite3`, in the same volume.
 
 ## If SSH stops working
 
