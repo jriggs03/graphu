@@ -1,6 +1,6 @@
 # The live Graphu server
 
-**https://3-12-190-201.sslip.io**
+**https://graphu.3-12-190-201.sslip.io**
 
 One AWS server in `us-east-2` runs the Docker image behind Caddy (HTTPS). Everything is tagged `graphu`.
 

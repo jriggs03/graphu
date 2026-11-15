@@ -24,9 +24,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    # Caddy gets and renews the HTTPS certificate for GRAPHU_DOMAIN by itself.
-    command: caddy reverse-proxy --from ${GRAPHU_DOMAIN:?set GRAPHU_DOMAIN in .env} --to graphu:8000
+    environment:
+      GRAPHU_DOMAIN: ${GRAPHU_DOMAIN:?set GRAPHU_DOMAIN in .env}
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
 volumes:
