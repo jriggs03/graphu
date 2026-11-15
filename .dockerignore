@@ -1,0 +1,12 @@
+.git
+.venv
+.claude
+target
+data
+models
+web/node_modules
+web/dist
+**/.DS_Store
+*.sqlite*
+.env
+.env.*

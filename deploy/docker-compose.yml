@@ -1,0 +1,34 @@
+# Graphu on one small server: the app, plus Caddy in front for HTTPS.
+#
+#   cd deploy
+#   cp .env.example .env        # then fill it in
+#   docker compose up -d --build
+#
+# Graphs are kept in the "graphu-data" volume, which survives restarts and rebuilds.
+services:
+  graphu:
+    # Built from this repo with --build, or loaded onto the server with `docker load`.
+    image: graphu:local
+    build: ..
+    restart: unless-stopped
+    environment:
+      # Leave the key empty to run the sample only. Uploads are then recorded but not read.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GRAPHU_MODEL: ${GRAPHU_MODEL:-claude-sonnet-5-5}
+    volumes:
+      - graphu-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    # Caddy gets and renews the HTTPS certificate for GRAPHU_DOMAIN by itself.
+    command: caddy reverse-proxy --from ${GRAPHU_DOMAIN:?set GRAPHU_DOMAIN in .env} --to graphu:8000
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  graphu-data:
+  caddy-data:

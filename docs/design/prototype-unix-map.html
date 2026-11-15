@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphu · The UNIX Environment</title>
+<style>
+  :root{
+    --bg:#f8f7f4; --ink:#22211f; --muted:#7a776f; --faint:#b9b5ac;
+    --node:#ecebe7; --node-stroke:#dad7d0; --edge:#dcd9d2; --edge-strong:#9c978c;
+    --accent:#c2785c; --accent-ink:#fff; --accent-soft:#f3e3db;
+    --chip:#fff; --chip-stroke:#e4e1da; --code:#efeee9; --dark:#2b2a28;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  header{padding:22px 28px 6px}
+  .brand{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  h1{margin:0;font-size:28px;font-weight:650;letter-spacing:-.01em}
+  .goal{margin:14px 0 0;font-size:17px;font-weight:600}
+  .route{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .route button{font:inherit;font-size:15px;border:1px solid var(--chip-stroke);background:var(--chip);color:var(--ink);
+    padding:8px 14px;border-radius:12px;cursor:pointer;transition:background .15s,color .15s}
+  .route button .n{font-size:12px;color:var(--muted);margin-right:6px}
+  .route button.on{background:var(--dark);color:#fff;border-color:var(--dark)}
+  .route button.on .n{color:#cfccc5}
+  .route button.done{border-color:var(--accent);}
+  .route .arr{color:var(--muted)}
+  .route .apply{border-style:dashed}
+  .route .then{font-size:12px;color:var(--muted);margin-left:4px}
+
+  main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,1fr);gap:16px;padding:6px 28px 28px;align-items:start}
+  @media (max-width:860px){main{grid-template-columns:1fr}}
+  .mapwrap{position:relative}
+  svg#map{width:100%;height:auto;display:block;touch-action:manipulation}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:2px 4px 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{display:inline-block;border-radius:50%;background:var(--node);border:1px solid var(--node-stroke)}
+  .legend .rt{width:22px;height:4px;border-radius:2px;background:var(--accent)}
+
+  .node{cursor:pointer;outline:none}
+  .node circle.body{fill:var(--node);stroke:var(--node-stroke);stroke-width:1.2;transition:fill .2s,stroke .2s}
+  .node:hover circle.body,.node:focus-visible circle.body{stroke:var(--edge-strong);stroke-width:2}
+  .node text{pointer-events:none;text-anchor:middle;fill:var(--ink)}
+  .node .sym{font-family:var(--mono)}
+  .node.rel circle.body{stroke:var(--edge-strong);stroke-width:2}
+  .node.sel circle.body{fill:var(--accent);stroke:var(--accent)}
+  .node.sel text{fill:var(--accent-ink)}
+  .node.dim{opacity:.6}
+  .badge circle{fill:var(--dark)} .badge text{fill:#fff;font-size:12px;font-weight:600;text-anchor:middle}
+  .node.sel .badge circle{fill:var(--ink)}
+  .edge{fill:none;stroke:var(--edge);stroke-width:1.6;transition:stroke .2s,opacity .2s}
+  .edge.inc{stroke:var(--edge-strong);stroke-width:2.4}
+  .edge.route{stroke:var(--accent);stroke-width:5;stroke-linecap:round;opacity:.9}
+  .edge.dim{opacity:.35}
+
+  aside{background:transparent;padding:8px 4px}
+  .where{font-size:14px;color:var(--muted)}
+  .where b{color:var(--ink);font-weight:500}
+  h2{font-size:24px;margin:8px 0 14px;letter-spacing:-.01em;line-height:1.2}
+  pre.code{margin:0 0 6px;font-family:var(--mono);font-size:15px;line-height:1.6;white-space:pre-wrap}
+  .src{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;margin:0 0 14px}
+  .src.lec{background:var(--accent-soft);color:#8a4a31}
+  .src.comp{background:#eceae5;color:var(--muted)}
+  .visual{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:4px 0 10px}
+  .mem{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+  .mem .nm{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .mem .box{font-family:var(--mono);font-size:17px;background:var(--code);border:1px solid var(--node-stroke);
+    border-radius:8px;padding:10px 14px;min-width:64px;text-align:center;transition:all .2s}
+  .mem .ad{font-family:var(--mono);font-size:12px;color:var(--muted);padding:1px 6px;border-radius:5px}
+  .mem .ad.hl{background:var(--accent);color:#fff}
+  .mem.hl .box{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .mem .box.wide{text-align:left;padding:10px 12px}
+  .field{display:flex;justify-content:space-between;gap:16px;font-size:14px;line-height:1.7}
+  .field .k{color:var(--muted)}
+  .arrow{display:inline-flex;align-items:center;color:var(--ink)}
+  .arrow.hl{color:var(--accent)}
+  .bytes{display:flex;flex-wrap:wrap;gap:3px;max-width:320px}
+  .bytes span{font-family:var(--mono);font-size:13px;background:var(--code);border:1px solid var(--node-stroke);
+    border-radius:4px;width:24px;height:28px;display:inline-flex;align-items:center;justify-content:center}
+  .bytes span:first-child{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+  .note{font-size:15px;margin:2px 0 4px}
+  .note code{font-family:var(--mono);font-size:14px;background:var(--code);padding:1px 5px;border-radius:4px}
+  .cite{font-size:13px;color:var(--muted);margin:8px 0 18px}
+  .rel{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .rel h3{font-size:16px;margin:0 6px 0 0;font-weight:650}
+  .rel .none{font-size:14px;color:var(--muted)}
+  .chip{font:inherit;font-size:14px;border:1px solid var(--chip-stroke);background:var(--chip);border-radius:12px;
+    padding:6px 12px;cursor:pointer;color:var(--ink)}
+  .chip:hover{border-color:var(--edge-strong)}
+  .chip code{font-family:var(--mono);font-size:13px}
+  .next{margin-top:18px;font:inherit;font-size:16px;background:var(--dark);color:#fff;border:0;border-radius:12px;
+    padding:12px 18px;cursor:pointer}
+  .next:hover{background:#000}
+  .why{font-size:13px;color:var(--muted);margin-top:8px;max-width:420px}
+  footer{padding:0 28px 22px;font-size:12px;color:var(--faint)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Graphu · CSC 2050</div>
+  <h1>The UNIX Environment</h1>
+  <div class="goal">Goal: understand pointers, then use them with <code style="font-family:var(--mono)">stat</code></div>
+  <nav class="route" id="route" aria-label="Route"></nav>
+</header>
+
+<main>
+  <div class="mapwrap">
+    <svg id="map" viewBox="0 0 900 620" role="group" aria-label="Concept map"></svg>
+    <div class="legend">
+      <span><span class="rt"></span>Route: click in this order</span>
+      <span><i style="width:10px;height:10px"></i><i style="width:14px;height:14px"></i><i style="width:18px;height:18px"></i>Bigger = more concepts rely on it (PageRank)</span>
+    </div>
+  </div>
+  <aside id="panel" aria-live="polite"></aside>
+</main>
+<footer>Prototype. Code marked “From lecture” is copied from the CSC 2050 UNIX slides with the page shown. Code marked “Companion example” was written for this map and is not in the slides. Addresses like 0x104 are made up for illustration.</footer>
+
+<script>
+const LEC = "lec", COMP = "comp";
+
+/* ---------- concepts ---------- */
+const N = {
+  address:  {sym:"&", label:"Address", x:130, y:150},
+  pointer:  {sym:"*", label:"Pointers", x:310, y:330},
+  deref:    {sym:"*p", label:"Dereference", x:500, y:125},
+  stat:     {sym:"stat", label:"File metadata", x:525, y:340},
+  struct:   {sym:"{ }", label:"Structs", x:725, y:320},
+  readdir:  {sym:"readdir", label:"Dir entries", x:790, y:130},
+  open:     {sym:"open", label:"File descr.", x:100, y:500},
+  readwrite:{sym:"read/write", label:"Byte buffers", x:275, y:555},
+  fopen:    {sym:"fopen", label:"Streams", x:460, y:560},
+  wait:     {sym:"wait", label:"Child status", x:650, y:530},
+};
+const NAME = { address:"Address", pointer:"Pointers", deref:"Dereference", struct:"Structs",
+  stat:"File metadata (stat)", readdir:"Directory entries (readdir)", readwrite:"Byte buffers (read / write)",
+  open:"File descriptors (open)", fopen:"Stream pointers (fopen)", wait:"Child status (wait)" };
+
+/* prerequisite edges: [dependent, what it relies on] */
+const PREREQ = [
+  ["pointer","address"], ["deref","pointer"],
+  ["stat","pointer"], ["stat","struct"],
+  ["readdir","pointer"], ["readdir","struct"],
+  ["readwrite","pointer"], ["readwrite","open"],
+  ["fopen","pointer"], ["wait","pointer"],
+];
+const ROUTE = ["address","pointer","deref"];
+const APPLY = "stat";
+
+/* ---------- PageRank on dependent -> prerequisite ---------- */
+function pagerank(ids, edges, d=0.85, iters=200){
+  const n = ids.length, out = {}, inc = {};
+  ids.forEach(i=>{out[i]=[];inc[i]=[]});
+  edges.forEach(([a,b])=>{out[a].push(b);inc[b].push(a)});
+  let pr = Object.fromEntries(ids.map(i=>[i,1/n]));
+  for(let t=0;t<iters;t++){
+    const dang = ids.filter(i=>out[i].length===0).reduce((s,i)=>s+pr[i],0);
+    const nx = {};
+    ids.forEach(i=>{
+      nx[i] = (1-d)/n + d*dang/n + d*inc[i].reduce((s,j)=>s+pr[j]/out[j].length,0);
+    });
+    pr = nx;
+  }
+  return pr;
+}
+const PR = pagerank(Object.keys(N), PREREQ);
+(function sizeTiers(){
+  const max = Math.max(...Object.values(PR));
+  for(const id in N){
+    const r = PR[id]/max;
+    N[id].tier = r >= 0.6 ? 3 : r >= 0.25 ? 2 : 1;
+    N[id].r = [0,54,64,78][N[id].tier];
+  }
+})();
+
+const learnFirst = id => PREREQ.filter(e=>e[0]===id).map(e=>e[1]);
+const usedBy     = id => PREREQ.filter(e=>e[1]===id).map(e=>e[0]);
+
+/* ---------- small visual helpers ---------- */
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+function mem(name, value, addr, o={}){
+  return `<div class="mem${o.hl?" hl":""}"><div class="nm">${esc(name)}</div>
+    <div class="box${o.wide?" wide":""}">${o.raw?value:esc(value)}</div>
+    ${addr?`<div class="ad${o.adHl?" hl":""}">@ ${addr}</div>`:""}</div>`;
+}
+const arrow = (hl,label="") => `<span class="arrow${hl?" hl":""}" aria-hidden="true"><svg width="52" height="20" viewBox="0 0 52 20">
+  <line x1="2" y1="10" x2="42" y2="10" stroke="currentColor" stroke-width="2.4"/><path d="M40 4 L50 10 L40 16 Z" fill="currentColor"/></svg>${label}</span>`;
+const fields = rows => rows.map(([k,v])=>`<div class="field"><span class="k">${k}</span><span>${esc(v)}</span></div>`).join("");
+
+/* ---------- what each node shows ---------- */
+const CONTENT = {
+  address:{
+    heading:"&score gives the address where score lives",
+    code:"int score = 4;\n&score        // 0x104", src:COMP,
+    visual:()=> mem("score", "4", "0x104", {hl:true, adHl:true}) +
+      `<div class="note"><code>&amp;score</code> → <b>0x104</b></div>`,
+    cite:"Companion example. The slides use & the same way, in stat(\"test.txt\", &buf) (p. 19)."
+  },
+  pointer:{
+    heading:"Store an address in a pointer",
+    code:"int score = 4;\nint *p = &score;", src:COMP,
+    visual:()=> mem("p", "0x104", "0x200") + arrow(false) + mem("score","4","0x104",{adHl:true}),
+    cite:"Companion example. The slides need pointers for buffers (p. 6), struct stat (p. 19) and status (p. 31)."
+  },
+  deref:{
+    heading:"*p follows the pointer back to score",
+    code:"int *p = &score;\nprintf(\"%d\\n\", *p);   // 4", src:COMP,
+    visual:()=> mem("p", "0x104", "0x200") + arrow(true,"") + mem("score","4","0x104",{hl:true}) +
+      `<div class="note"><code>*p</code> is <b>score</b>, which is 4</div>`,
+    cite:"Companion example. The slides dereference with *(bits++) in stob (p. 14)."
+  },
+  struct:{
+    heading:"A struct groups named fields into one box",
+    code:"struct stat buf;", src:LEC, page:19,
+    visual:()=> mem("buf  (struct stat)", fields([["st_ino","…"],["st_size","…"],["st_mode","…"],["st_mtime","…"]]),"0x7f0",{raw:true,wide:true}),
+    cite:"Lecture slide p. 19 for struct stat buf. Field names are from the standard header and are not listed on the slide."
+  },
+  stat:{
+    heading:"stat fills a struct you point it to",
+    code:"struct stat buf;\nstat(\"test.txt\", &buf);", src:LEC, page:19,
+    visual:()=> mem("&buf", "0x7f0") + arrow(true) +
+      mem("buf  (struct stat)", fields([["st_ino","119230731"],["st_size","14"],["st_mode","-rw-r--r--"]]),"0x7f0",{raw:true,wide:true,hl:true}) +
+      `<div class="note">On success, <code>stat</code> writes the file's metadata into <b>buf</b>.</div>`,
+    cite:"Lecture slide p. 19: “The buffer must be a struct stat pointer.” Field values are illustrative."
+  },
+  readdir:{
+    heading:"readdir hands back a pointer to the next entry",
+    code:"struct dirent *entry;\nentry = readdir(dir);", src:LEC, page:21,
+    visual:()=> mem("entry", "0x3a0") + arrow(true) +
+      mem("struct dirent", fields([["d_ino","119230730"],["d_name","bar.txt"]]),"0x3a0",{raw:true,wide:true,hl:true}),
+    cite:"Lecture slide p. 21: entries are only guaranteed to have an inode number and filename. Values from the ls -ai example on p. 20."
+  },
+  readwrite:{
+    heading:"write sends bytes from a buffer you point to",
+    code:"char *buf = \"Hello, world!\\n\";\nwrite(fd, buf, sizeof(char) * 14);", src:LEC, page:6,
+    visual:()=> mem("buf","0x4d0") + arrow(true) +
+      `<div class="mem"><div class="nm">14 bytes @ 0x4d0</div><div class="bytes">${
+        ["H","e","l","l","o",",","␠","w","o","r","l","d","!","\\n"].map(c=>`<span>${esc(c)}</span>`).join("")}</div></div>`,
+    cite:"Lecture slide p. 6: “The buffer must be a pointer to pre-allocated memory.”"
+  },
+  open:{
+    heading:"open gives you a small number for a file",
+    code:"int fd = open(\n  \"test.txt\", O_WRONLY | O_CREAT | O_TRUNC,\n  S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);", src:LEC, page:5,
+    visual:()=> mem("fd","3") + arrow(false) +
+      mem("open file table", fields([["0","stdin"],["1","stdout"],["2","stderr"],["3","test.txt"]]),"",{raw:true,wide:true}),
+    cite:"Lecture slide p. 5. 0–2 are stdin, stdout and stderr (p. 11); 3 is illustrative."
+  },
+  fopen:{
+    heading:"fopen gives you a pointer to a FILE stream",
+    code:"FILE *file = fopen(\"test.txt\", \"w\");", src:LEC, page:8,
+    visual:()=> mem("file","0x5c0") + arrow(true) +
+      mem("FILE", fields([["stream","test.txt"],["mode","\"w\""]]),"0x5c0",{raw:true,wide:true,hl:true}),
+    cite:"Lecture slide p. 8: fopen returns a pointer to a dynamically allocated FILE."
+  },
+  wait:{
+    heading:"wait writes the child's status where you point",
+    code:"int status;\nwait(&status);", src:LEC, page:31,
+    visual:()=> mem("&status","0x6e4") + arrow(true) + mem("status","(packed)","0x6e4",{hl:true}) +
+      `<div class="note"><code>WEXITSTATUS(status)</code> → <b>94</b> after the child calls <code>exit(94)</code></div>`,
+    cite:"Lecture slide p. 31: status must be a pointer to an integer. exit(94) is on p. 30; WEXITSTATUS is on p. 32."
+  },
+};
+
+/* ---------- render map ---------- */
+const svg = document.getElementById("map");
+const NS = "http://www.w3.org/2000/svg";
+const el = (t,a={},p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+
+const defs = el("defs");
+[["arr","#9c978c"],["arrA","#c2785c"]].forEach(([id,c])=>{
+  const m = el("marker",{id,viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"7",markerHeight:"7",orient:"auto-start-reverse"},defs);
+  el("path",{d:"M0,0 L10,5 L0,10 z",fill:c},m);
+});
+
+const gEdges = el("g"), gNodes = el("g");
+function seg(a,b,padA,padB){
+  const A=N[a],B=N[b],dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy);
+  return [A.x+dx/L*padA, A.y+dy/L*padA, B.x-dx/L*padB, B.y-dy/L*padB];
+}
+const isRoute = (dep,pre)=>{const i=ROUTE.indexOf(pre);return i>=0&&ROUTE[i+1]===dep;};
+const edgeEls = PREREQ.map(([dep,pre])=>{
+  // drawn in learning direction: prerequisite -> dependent
+  const [x1,y1,x2,y2] = seg(pre,dep,N[pre].r+3,N[dep].r+6);
+  const e = el("line",{x1,y1,x2,y2,class:"edge"+(isRoute(dep,pre)?" route":"")},gEdges);
+  e.dataset.dep=dep; e.dataset.pre=pre; return e;
+});
+
+const nodeEls = {};
+for(const id in N){
+  const n=N[id], g=el("g",{class:"node",tabindex:"0",role:"button","aria-label":NAME[id]},gNodes);
+  el("circle",{class:"body",cx:n.x,cy:n.y,r:n.r},g);
+  const symSize = Math.min(n.tier===3?24:19, (1.6*n.r)/(n.sym.length*0.62));
+  const labSize = Math.min(n.tier===3?18:15, (1.7*n.r)/(n.label.length*0.55));
+  const t1=el("text",{class:"sym",x:n.x,y:n.y-4,"font-size":symSize.toFixed(1)},g); t1.textContent=n.sym;
+  const t2=el("text",{x:n.x,y:n.y+labSize+4,"font-size":labSize.toFixed(1)},g); t2.textContent=n.label;
+  const ri = ROUTE.indexOf(id);
+  if(ri>=0){
+    const b=el("g",{class:"badge"},g), bx=n.x-n.r*0.72, by=n.y-n.r*0.72;
+    el("circle",{cx:bx,cy:by,r:11},b); const bt=el("text",{x:bx,y:by+4},b); bt.textContent=ri+1;
+  }
+  g.addEventListener("click",()=>select(id));
+  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select(id);}});
+  nodeEls[id]=g;
+}
+
+/* ---------- route bar ---------- */
+const routeEl = document.getElementById("route");
+const routeLabels = {address:"Start with Address", pointer:"Pointers", deref:"Dereference"};
+function renderRoute(cur){
+  const reached = Math.max(lastRouteStep, ROUTE.indexOf(cur));
+  routeEl.innerHTML = ROUTE.map((id,i)=>
+    `<button class="${cur===id?"on":i<=reached?"done":""}" data-id="${id}"><span class="n">${i+1}.</span>${routeLabels[id]}</button>`
+  ).join('<span class="arr">→</span>') +
+  `<span class="then">then apply it</span><button class="apply ${cur===APPLY?"on":""}" data-id="${APPLY}"><code style="font-family:var(--mono)">stat</code></button>`;
+  routeEl.querySelectorAll("button").forEach(b=>b.onclick=()=>select(b.dataset.id));
+}
+
+/* ---------- panel ---------- */
+const panel = document.getElementById("panel");
+let lastRouteStep = 0;
+const chip = id => `<button class="chip" data-id="${id}">${NAME[id].replace(/\((.+)\)/,"(<code>$1</code>)")}</button>`;
+
+function nextFor(id){
+  const i = ROUTE.indexOf(id);
+  if(i>=0 && i<ROUTE.length-1) return {to:ROUTE[i+1], text:`Next · ${routeLabels[ROUTE[i+1]]} →`};
+  if(id==="deref") return {to:"stat", text:"Next · See it in stat →"};
+  if(id==="stat")  return {to:"readdir", text:"Same pattern · readdir →"};
+  if(lastRouteStep===ROUTE.length-1) return {to:"stat", text:"Back to the goal · stat →"};
+  const s = ROUTE[lastRouteStep];
+  return {to:s, text:`Back to the route · ${lastRouteStep+1}. ${routeLabels[s]}`};
+}
+
+function select(id){
+  const ri = ROUTE.indexOf(id); if(ri>lastRouteStep) lastRouteStep=ri;
+  const lf = learnFirst(id), ub = usedBy(id), rel = new Set([id,...lf,...ub]);
+  for(const k in nodeEls){
+    nodeEls[k].classList.toggle("sel",k===id);
+    nodeEls[k].classList.toggle("rel",k!==id && rel.has(k));
+    nodeEls[k].classList.toggle("dim",!rel.has(k) && !ROUTE.includes(k));
+  }
+  edgeEls.forEach(e=>{
+    const inc = e.dataset.dep===id || e.dataset.pre===id;
+    e.classList.toggle("inc",inc && !e.classList.contains("route"));
+    e.classList.toggle("dim",!inc && !e.classList.contains("route"));
+    if(e.classList.contains("route")) e.setAttribute("marker-end","url(#arrA)");
+    else if(inc) e.setAttribute("marker-end","url(#arr)"); else e.removeAttribute("marker-end");
+  });
+  renderRoute(id);
+
+  const c = CONTENT[id], nx = nextFor(id);
+  const where = ri>=0 ? `Step ${ri+1} of ${ROUTE.length} · <b>${routeLabels[id]}</b>`
+              : id===APPLY ? `Apply it · <b>${NAME[id]}</b>` : `Exploring · <b>${NAME[id]}</b>`;
+  const srcTag = c.src===LEC ? `<span class="src lec">From lecture · p. ${c.page}</span>`
+                             : `<span class="src comp">Companion example</span>`;
+  const why = id==="stat" ? `<div class="why">You need <b>Pointers</b> because <code>&amp;buf</code> passes buf's address, and <b>Structs</b> because <code>stat</code> fills named fields.</div>` : "";
+  panel.innerHTML = `
+    <div class="where">${where}</div>
+    <h2>${esc(c.heading).replace(/&amp;/g,"&amp;")}</h2>
+    <pre class="code">${esc(c.code)}</pre>${srcTag}
+    <div class="visual">${c.visual()}</div>
+    <div class="cite">${esc(c.cite)}</div>
+    <div class="rel"><h3>Learn first</h3>${lf.length?lf.map(chip).join(""):'<span class="none">Nothing — start here</span>'}</div>
+    <div class="rel"><h3>Used by</h3>${ub.length?ub.map(chip).join(""):'<span class="none">Nothing else in this map yet</span>'}</div>
+    ${why}
+    <button class="next" data-id="${nx.to}">${nx.text}</button>`;
+  panel.querySelectorAll("[data-id]").forEach(b=>b.onclick=()=>select(b.dataset.id));
+}
+
+select("address");
+</script>
+</body>
+</html>
