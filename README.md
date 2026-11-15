@@ -2,13 +2,51 @@
 
 Graphu helps college students connect concepts across lecture PDFs. It proposes concepts and relationships, shows a document name, page number and supporting quote for each, and adds them to the map after review.
 
-## Status of the redesign
+## Status of the rewrite
 
-The frontend in `web/` is the new design from `docs/design/`. For now it runs entirely in the browser on built-in sample notes: `web/src/api.ts` is the only module that talks to a backend, and it is currently answered by `web/src/sample/store.ts` (localStorage). No server or API key is needed, and files you add are recorded as a batch but not read. To try it, run `npm --prefix web run dev` and open http://localhost:5173, or build with `npm --prefix web run build` and host `web/dist` as a static site.
+Graphu is moving from the Python scaffold to Rust. Three pieces exist today:
 
-The Python backend below still works and still passes its tests, but the new frontend does not call it. It stays as the safety net until the Rust server exposes the API in `api.ts`.
+| Piece | Where | What it does |
+|---|---|---|
+| Frontend | `web/` | The redesigned UI from `docs/design/`. It talks to a backend only through `web/src/api.ts`. |
+| Core | `crates/graphu-core` | The rules and SQLite storage: grounding, review, batches, undo, graph queries. |
+| Server | `crates/graphu-server` | An Axum web server. Each route calls one core function, and it serves the built frontend. |
 
-## Run locally
+The frontend picks its backend when it loads. If `/api/info` answers, it uses the server. If not (for example on a static host), it falls back to a built-in sample that lives in the browser's localStorage.
+
+Reading uploaded files with the Claude API is the next step. Until then an upload is hashed, recorded as a batch, and reported as not read. Duplicate files are blocked.
+
+### Run the Rust server
+
+You need Rust (`brew install rust`) and Node.js 22.
+
+```sh
+npm --prefix web ci
+npm --prefix web run build
+cargo run -p graphu-server
+```
+
+Open http://127.0.0.1:8000. The sample graphbooks load with no API key. Settings, all optional:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GRAPHU_DB` | `data/graphu-rs.sqlite3` | Where the SQLite file lives. It must not be the Python backend's file. |
+| `GRAPHU_WEB` | `web/dist` | Folder with the built frontend. |
+| `GRAPHU_ADDR` | `127.0.0.1:8000` | Address to listen on. Use `0.0.0.0:8000` inside a container. |
+
+The server keeps one shared workspace and has no sign-in, the same as the Python scaffold.
+
+For frontend development run the server, then `npm --prefix web run dev` and open http://localhost:5173. Vite forwards `/api` to port 8000.
+
+### Tests
+
+```sh
+cargo test --workspace
+```
+
+The Python backend below still works and still passes its tests. It is the safety net until the Rust server can read PDFs.
+
+## Run the Python scaffold locally
 
 Use Python 3.12 and Node.js 22.13 or newer within the 22.x line.
 
