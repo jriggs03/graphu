@@ -4,7 +4,7 @@ import type { Claim, Notebook, SamplePack, Status } from './api'
 import { GraphView } from './graph/GraphView'
 import type { GraphEdge, GraphNode, Selection } from './graph/GraphView'
 import { layout, separate } from './graph/layout'
-import { RADIUS, need, route, search, tiers } from './graph/model'
+import { RADIUS, abbreviate, need, route, search, tiers } from './graph/model'
 import type { Pair, Point } from './graph/model'
 import { ConceptPanel, EdgePanel, HistoryPanel, ReviewPanel, claimText } from './Panels'
 import type { Tools } from './Panels'
@@ -30,6 +30,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const searchBox = useRef<HTMLInputElement>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; world: Point; node?: string } | null>(null)
   const [newName, setNewName] = useState('')
+  /** Set while the student is picking the other end of a link they are drawing by hand. */
+  const [linking, setLinking] = useState<{ from: string; as: 'dependent' | 'prerequisite' } | null>(null)
   const [ai, setAi] = useState(false)
   useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
@@ -59,7 +61,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     const pairs: Pair[] = notebook.edges.filter(edge => edge.status === 'approved').map(edge => [edge.from, edge.to])
     const tier = tiers(approved, pairs)
     const nodes: GraphNode[] = notebook.concepts.map(concept => ({
-      id: concept.id, label: concept.label, symbol: concept.symbol,
+      id: concept.id, label: concept.label, symbol: concept.symbol || abbreviate(concept.label),
       tier: tier.get(concept.id) ?? 1, r: RADIUS[tier.get(concept.id) ?? 1],
       pending: concept.status === 'pending', unsourced: concept.user_added,
       newEvidence: concept.evidence.some(item => item.status === 'pending'),
@@ -102,6 +104,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         setQuery('')
         setAdding(null)
         setMenu(null)
+        setLinking(null)
       }
     }
     window.addEventListener('keydown', key)
@@ -112,8 +115,21 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   if (!notebook || !graph) return <div className="lost"><p>Loading…</p></div>
 
   const select = (selection: Selection) => {
+    if (linking && selection?.kind === 'concept' && selection.id !== linking.from) {
+      // The second click of a hand-drawn link: join the two concepts.
+      const [dependent, prerequisite] = linking.as === 'dependent' ? [linking.from, selection.id] : [selection.id, linking.from]
+      setLinking(null)
+      void act(() => api.addEdge(notebook.id, dependent, prerequisite))
+      return
+    }
     setSelected(selection)
     if (selection) setMode('detail')
+  }
+  const startLink = (from: string, as: 'dependent' | 'prerequisite') => {
+    setMenu(null)
+    setSelected({ kind: 'concept', id: from })
+    setMode('detail')
+    setLinking({ from, as })
   }
 
   const decide = (claim: Claim, status: Status) => {
@@ -128,7 +144,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     })
   }
 
-  const tools: Tools = { notebook, order: graph.order, select, act, decide, ai }
+  const tools: Tools = { notebook, order: graph.order, select, act, decide, ai, startLink, notify }
   const pendingCount = notebook.claims.filter(claim => claim.status === 'pending'
     && !notebook.batches.find(batch => batch.id === claim.batch_id)?.undone).length
   const concept = selected?.kind === 'concept' ? notebook.concepts.find(item => item.id === selected.id) : undefined
@@ -217,6 +233,13 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         </ol>}
       </div>
 
+      {linking && <div className="linking" role="status">
+        {linking.as === 'dependent'
+          ? <>Click the concept to learn <b>before</b> {graph.label(linking.from)}.</>
+          : <>Click the concept that <b>builds on</b> {graph.label(linking.from)}.</>}
+        <button onClick={() => setLinking(null)}>Cancel</button>
+      </div>}
+
       {graph.nodes.length ? <GraphView nodes={graph.nodes} edges={graph.edges} positions={positions}
         selected={selected} matches={matchSet} need={graph.needSet} steps={graph.steps} target={notebook.target}
         fitKey={`${id}:${fitCount}`} onSelect={select} onMenu={at => { setNewName(''); setMenu(at) }}
@@ -256,6 +279,10 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
           <strong>{graph.label(menu.node)}</strong>
           <button role="menuitem" onClick={() => { select({ kind: 'concept', id: menu.node! }); setMenu(null) }}>See its quotes</button>
           <button role="menuitem" onClick={() => writeNote(menu.node!)}>Write a note on it</button>
+          {approvedConcepts.some(item => item.id === menu.node) && <>
+            <button role="menuitem" onClick={() => startLink(menu.node!, 'dependent')}>Link: pick what to learn first…</button>
+            <button role="menuitem" onClick={() => startLink(menu.node!, 'prerequisite')}>Link: pick what builds on it…</button>
+          </>}
           {approvedConcepts.some(item => item.id === menu.node) && <button role="menuitem" onClick={() => {
             void act(() => api.setTarget(notebook.id, notebook.target === menu.node ? null : menu.node!))
             setMenu(null)

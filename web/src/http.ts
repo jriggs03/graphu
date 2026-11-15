@@ -61,6 +61,7 @@ export const httpBackend: Backend = {
   addEdge: (id, from, to) => request('POST', `${at(id)}/edges`, { from, to }),
   setComment: (id, concept, text) => request('PUT', `${at(id)}/comment`, { concept, text }),
   setTarget: (id, concept) => request('PUT', `${at(id)}/target`, { concept }),
+  setSymbol: (id, concept, symbol) => request('PUT', `${at(id)}/symbol`, { concept, symbol }),
   drawVisual: (id, concept) => request('POST', `${at(id)}/visual`, { concept }),
 
   async resetSample() {

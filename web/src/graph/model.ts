@@ -120,3 +120,15 @@ export function search(notebook: Notebook, query: string): Match[] {
   }
   return matches
 }
+
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'for', 'in', 'of', 'on', 'the', 'to', 'with'])
+
+/**
+ * A stand-in symbol for a concept that has none, so every node has something large to read:
+ * the initials of its name ("Minimum Spanning Tree" → "MST"). One-word names get no stand-in.
+ */
+export function abbreviate(label: string) {
+  const words = label.split(/[\s\-–/]+/).filter(word => word && !SMALL_WORDS.has(word.toLowerCase()))
+  if (words.length < 2) return ''
+  return words.map(word => word.match(/^\d+/)?.[0] ?? word[0].toUpperCase()).join('').slice(0, 6)
+}

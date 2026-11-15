@@ -327,3 +327,12 @@ button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color:
 .welcome .hint { max-width: 420px; }
 .greeting { color: var(--muted); font-size: 16px; margin-bottom: -8px; }
 .popover .row input { width: 150px; padding: 5px 8px; }
+
+/* ---------- drawing links by hand, symbols, removing ---------- */
+.linking { margin: 0 20px 6px; padding: 8px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-deep); font-size: 14px; display: flex; align-items: center; gap: 12px; }
+.linking button { margin-left: auto; padding: 3px 10px; }
+.link-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-buttons button { border-style: dashed; color: var(--muted); font-size: 13.5px; }
+.symbol-edit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
+.symbol-edit input { width: 130px; font-family: var(--mono); font-weight: 400; padding: 5px 8px; }
+.remove { align-self: flex-start; font-size: 13px; margin-top: 4px; }

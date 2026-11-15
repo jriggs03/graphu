@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import type { Batch, Claim, Concept, Edge, Evidence, Notebook, Status } from './api'
 import type { Selection } from './graph/GraphView'
+import type { Toast } from './ui'
 
 export type Tools = {
   notebook: Notebook
@@ -14,6 +15,26 @@ export type Tools = {
   decide: (claim: Claim, status: Status) => void
   /** True when the server has an AI key, so pictures can be drawn. */
   ai: boolean
+  /** Start drawing a link by hand: the next concept clicked on the map is the other end. */
+  startLink: (from: string, as: 'dependent' | 'prerequisite') => void
+  notify: (toast: Toast) => void
+}
+
+/**
+ * Take a concept or a link out of the graph by rejecting every claim behind it.
+ * Nothing is deleted: each claim can be brought back with Undo under Sources.
+ */
+async function remove(tools: Tools, claims: Claim[], what: string) {
+  if (!confirm(`Remove ${what} from your graph? You can bring it back from Sources.`)) return
+  for (const claim of claims) {
+    if (!(await tools.act(() => api.reviewClaim(tools.notebook.id, claim.id, 'rejected')))) return
+  }
+  tools.select(null)
+  tools.notify({ text: `Removed ${what}. Undo it under Sources.` })
+}
+const liveClaims = (tools: Tools) => {
+  const undone = new Set(tools.notebook.batches.filter(batch => batch.undone).map(batch => batch.id))
+  return tools.notebook.claims.filter(claim => claim.status !== 'rejected' && !undone.has(claim.batch_id))
 }
 
 export const claimText = (claim: Claim) =>
@@ -103,6 +124,10 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
       {usedBy.map(edge => <Chip key={edge.id} concept={byId.get(edge.from)!} pending={edge.status === 'pending'} tools={tools} />)}
       {!usedBy.length && <span className="none">Nothing else in this map yet.</span>}
     </div>
+    {approved && <div className="link-buttons">
+      <button onClick={() => tools.startLink(concept.id, 'dependent')}>+ Link what to learn first</button>
+      <button onClick={() => tools.startLink(concept.id, 'prerequisite')}>+ Link what builds on this</button>
+    </div>}
     {approved && linkable.length > 0 && <select className="link-add" value="" aria-label="Add a prerequisite yourself"
       onChange={event => void tools.act(() => api.addEdge(notebook.id, concept.id, event.target.value))}>
       <option value="">+ Add something to learn first…</option>
@@ -118,11 +143,21 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
       </button>}
     </div>}
 
+    <label className="symbol-edit">Symbol on the map
+      <input key={concept.id + concept.symbol} defaultValue={concept.symbol} maxLength={12} placeholder="e.g. ∫ or MST"
+        onBlur={event => {
+          if (event.target.value.trim() !== concept.symbol) void tools.act(() => api.setSymbol(notebook.id, concept.id, event.target.value))
+        }} />
+    </label>
+
     <label className="note">Your notes
       <textarea rows={3} value={note} placeholder="Add a comment. Search finds these too."
         onChange={event => setNote(event.target.value)}
         onBlur={() => { if (note.trim() !== concept.comment) void tools.act(() => api.setComment(notebook.id, concept.id, note)) }} />
     </label>
+    <button className="danger remove" onClick={() => void remove(tools,
+      liveClaims(tools).filter(claim => claim.kind === 'concept' && claim.concept_id === concept.id), `“${concept.label}”`)}>
+      Remove this concept from my graph</button>
   </div>
 }
 
@@ -141,6 +176,9 @@ export function EdgePanel({ edge, tools }: { edge: Edge; tools: Tools }) {
     <Quotes evidence={edge.evidence} tools={tools} />
     <div className="rel"><h3>Learn first</h3><Chip concept={to} pending={to.status === 'pending'} tools={tools} /></div>
     <div className="rel"><h3>Then</h3><Chip concept={from} pending={from.status === 'pending'} tools={tools} /></div>
+    <button className="danger remove" onClick={() => void remove(tools,
+      liveClaims(tools).filter(claim => claim.kind === 'edge' && claim.concept_id === edge.from && claim.target_id === edge.to),
+      `the link from “${to.label}” to “${from.label}”`)}>Remove this link</button>
   </div>
 }
 

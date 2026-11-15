@@ -23,6 +23,8 @@ type NotebookRec = {
   id: string; title: string; updated_at: string
   sources: Source[]; batches: Batch[]; claims: ClaimRec[]
   comments: Record<string, string>; target: string | null
+  /** Symbols the student chose, by concept id. */
+  symbols?: Record<string, string>
 }
 type Db = { version: number; seq: number; notebooks: NotebookRec[] }
 
@@ -185,7 +187,11 @@ function view(notebook: NotebookRec): Notebook {
     if (!concept.symbol) concept.symbol = claim.symbol
     if (claim.source_id) concept.evidence.push(evidenceOf(claim))
   }
-  for (const concept of concepts.values()) concept.user_added = unsourced(concept.status, concept.evidence)
+  for (const concept of concepts.values()) {
+    concept.user_added = unsourced(concept.status, concept.evidence)
+    const chosen = notebook.symbols?.[concept.id]
+    if (chosen) concept.symbol = chosen
+  }
   const approved = (id: string) => concepts.get(id)?.status === 'approved'
 
   const edges = new Map<string, Edge & { anyApproved: boolean }>()
@@ -434,6 +440,17 @@ export const sampleBackend: Backend = {
   async setTarget(id, concept) {
     const notebook = find(id)
     notebook.target = concept
+    touch(notebook)
+    return view(notebook)
+  },
+
+  async setSymbol(id, concept, symbol) {
+    const notebook = find(id)
+    const value = normalize(symbol)
+    if (value.length > 12) throw new ApiError(422, 'Keep the symbol to 12 characters or fewer.')
+    notebook.symbols = { ...notebook.symbols }
+    if (value) notebook.symbols[concept] = value
+    else delete notebook.symbols[concept]
     touch(notebook)
     return view(notebook)
   },
