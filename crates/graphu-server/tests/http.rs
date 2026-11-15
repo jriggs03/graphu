@@ -120,6 +120,13 @@ async fn notebooks_uploads_and_errors() {
     let (_, notebook) = call(&app, Method::PUT, &format!("{base}/target"), Some(json!({ "concept": "limits" }))).await;
     assert_eq!(notebook["target"], "limits");
 
+    // Rename, then delete. The built-in sample is protected.
+    let (_, renamed) = call(&app, Method::PATCH, &base, Some(json!({ "title": "CSC 357" }))).await;
+    assert_eq!(renamed["title"], "CSC 357");
+    assert_eq!(call(&app, Method::DELETE, &base, None).await.0, StatusCode::OK);
+    assert_eq!(call(&app, Method::GET, &base, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(call(&app, Method::DELETE, "/api/notebooks/sample-calculus", None).await.0, StatusCode::CONFLICT);
+
     let (status, error) = call(&app, Method::GET, "/api/notebooks/nope", None).await;
     assert_eq!((status, error["detail"].as_str()), (StatusCode::NOT_FOUND, Some("Notebook not found.")));
     assert_eq!(call(&app, Method::GET, "/api/nope", None).await.0, StatusCode::NOT_FOUND);

@@ -24,6 +24,8 @@ export const httpBackend: Backend = {
   info: () => request('GET', '/info'),
   listNotebooks: () => request('GET', '/notebooks'),
   createNotebook: title => request('POST', '/notebooks', { title }),
+  renameNotebook: (id, title) => request('PATCH', at(id), { title }),
+  deleteNotebook: async id => { await request('DELETE', at(id)) },
   getNotebook: id => request('GET', at(id)),
 
   async addMaterial(id, files, context) {

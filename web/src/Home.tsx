@@ -12,6 +12,26 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
   const [destination, setDestination] = useState('new')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [managing, setManaging] = useState<string | null>(null)
+
+  /** Run a change to the list, then reload it. Errors are shown, not thrown. */
+  const manage = (run: () => Promise<unknown>) => {
+    setManaging(null)
+    run().then(refresh, error => notify({ text: error instanceof Error ? error.message : 'Something went wrong.' }))
+  }
+  const rename = (notebook: NotebookSummary) => {
+    const title = prompt('New name for this graphbook', notebook.title)
+    if (title?.trim()) manage(() => api.renameNotebook(notebook.id, title))
+  }
+  const remove = (notebook: NotebookSummary) => {
+    if (!confirm(`Delete “${notebook.title}” and everything in it? This cannot be undone.`)) return
+    manage(async () => {
+      await api.deleteNotebook(notebook.id)
+      localStorage.removeItem(`graphu.positions.${notebook.id}`)
+      if (destination === notebook.id) setDestination('new')
+      notify({ text: `Deleted “${notebook.title}”.` })
+    })
+  }
 
   const refresh = useCallback(() => {
     api.listNotebooks().then(setNotebooks).catch(error => notify({ text: error.message }))
@@ -51,6 +71,14 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
               {notebook.pending > 0 && <span className="count">{notebook.pending} to review</span>}
             </small>
           </a>
+          <button className="more" aria-label={`Rename or delete ${notebook.title}`} aria-expanded={managing === notebook.id}
+            onClick={() => setManaging(managing === notebook.id ? null : notebook.id)}>⋯</button>
+          {managing === notebook.id && <div className="row-actions">
+            <button onClick={() => rename(notebook)}>Rename</button>
+            {notebook.id.startsWith('sample-')
+              ? <small>Built-in sample</small>
+              : <button className="danger" onClick={() => remove(notebook)}>Delete</button>}
+          </div>}
         </li>)}
         {!shown.length && <li className="empty">{tab === 'all' ? 'No graphbooks yet.' : 'Nothing is waiting for review.'}</li>}
       </ul>

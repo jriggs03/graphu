@@ -307,3 +307,13 @@ html[data-contrast="high"] .node.dim, html[data-contrast="high"] .edge.dim { opa
 html[data-contrast="high"] .edge { stroke-width: 2.2; }
 html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-motion="reduce"] *::after { transition: none !important; animation: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- rename and delete in the graphbook list ---------- */
+.notebooks li { position: relative; display: flex; flex-wrap: wrap; align-items: center; }
+.notebooks li a { flex: 1; min-width: 0; }
+.notebooks .more { border: 0; background: none; color: var(--muted); padding: 4px 10px; font-size: 18px; line-height: 1; border-radius: 8px; }
+.notebooks .more:hover, .notebooks .more[aria-expanded="true"] { background: var(--node); color: var(--ink); }
+.row-actions { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding: 2px 12px 10px; }
+.row-actions button { padding: 3px 10px; font-size: 13px; }
+button.danger { color: var(--warn); border-color: var(--warn); }
+button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color: var(--warn); }

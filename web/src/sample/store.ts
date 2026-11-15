@@ -299,6 +299,23 @@ export const sampleBackend: Backend = {
     return summary(notebook)
   },
 
+  async renameNotebook(id, title) {
+    const notebook = find(id)
+    const name = normalize(title).slice(0, 80)
+    if (!name) throw new ApiError(422, 'Give the graphbook a name.')
+    notebook.title = name
+    touch(notebook)
+    return summary(notebook)
+  },
+
+  async deleteNotebook(id) {
+    if (SAMPLE_NOTEBOOKS.some(sample => sample.id === id)) throw new ApiError(409, 'The built-in samples cannot be deleted.')
+    const store = load()
+    find(id)
+    store.notebooks = store.notebooks.filter(notebook => notebook.id !== id)
+    save()
+  },
+
   async getNotebook(id) {
     return view(find(id))
   },

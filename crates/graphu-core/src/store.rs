@@ -107,6 +107,7 @@ impl Graphu {
         let title = if title.is_empty() { "Untitled graphbook".to_string() } else { title };
         let tx = self.conn.transaction()?;
         let next: i64 = tx.query_row("SELECT COUNT(*) + 1 FROM notebooks", [], |row| row.get(0))?;
+        // After a deletion the count can repeat, so the loop below keeps the id unique.
         let mut id = format!("n{next}");
         while exists(&tx, "SELECT 1 FROM notebooks WHERE id = ?1", params![id])? {
             id.push('x');
@@ -115,6 +116,36 @@ impl Graphu {
         tx.execute("INSERT INTO notebooks (id, title, updated_at) VALUES (?1, ?2, ?3)", params![id, title, stamp])?;
         tx.commit()?;
         Ok(NotebookSummary { id, title, concepts: 0, pending: 0, updated_at: stamp })
+    }
+
+    pub fn rename_notebook(&mut self, id: &str, title: &str) -> Result<NotebookSummary> {
+        let title: String = normalize(title).chars().take(80).collect();
+        if title.is_empty() {
+            return Err(Error::Invalid("Give the graphbook a name.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        require_notebook(&tx, id)?;
+        tx.execute("UPDATE notebooks SET title = ?2 WHERE id = ?1", params![id, title])?;
+        touch(&tx, id)?;
+        tx.commit()?;
+        let updated_at = now(&self.conn)?;
+        Ok(summary(&view(&self.conn, id)?, updated_at))
+    }
+
+    /// Delete a graphbook and everything in it. This cannot be undone.
+    /// The built-in samples are kept, so the app always has something to show.
+    pub fn delete_notebook(&mut self, id: &str) -> Result<()> {
+        if crate::sample::notebooks().iter().any(|sample| sample.id == id) {
+            return Err(Error::Conflict("The built-in samples cannot be deleted.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        require_notebook(&tx, id)?;
+        for table in ["visuals", "comments", "claims", "pages", "sources", "batches"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE notebook_id = ?1"), params![id])?;
+        }
+        tx.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Everything the UI needs to draw one notebook.

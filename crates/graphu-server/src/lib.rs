@@ -122,7 +122,7 @@ pub fn app(graphu: Graphu, web: Option<PathBuf>, settings: Settings) -> Router {
     let api = Router::new()
         .route("/info", get(info))
         .route("/notebooks", get(list_notebooks).post(create_notebook))
-        .route("/notebooks/{id}", get(get_notebook))
+        .route("/notebooks/{id}", get(get_notebook).patch(rename_notebook).delete(delete_notebook))
         .route("/notebooks/{id}/documents", post(add_document))
         .route("/notebooks/{id}/sample-packs", get(list_sample_packs))
         .route("/notebooks/{id}/sample-packs/{pack}", post(add_sample_pack))
@@ -155,6 +155,14 @@ async fn list_notebooks(State(state): State<Shared>) -> Reply<Vec<NotebookSummar
 
 async fn create_notebook(State(state): State<Shared>, Json(body): Json<NewNotebook>) -> Reply<NotebookSummary> {
     run(&state, |graphu| graphu.create_notebook(&body.title))
+}
+
+async fn rename_notebook(State(state): State<Shared>, Path(id): Path<String>, Json(body): Json<NewNotebook>) -> Reply<NotebookSummary> {
+    run(&state, |graphu| graphu.rename_notebook(&id, &body.title))
+}
+
+async fn delete_notebook(State(state): State<Shared>, Path(id): Path<String>) -> Reply<()> {
+    run(&state, |graphu| graphu.delete_notebook(&id))
 }
 
 async fn get_notebook(State(state): State<Shared>, Path(id): Path<String>) -> Reply<Notebook> {

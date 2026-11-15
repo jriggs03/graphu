@@ -136,6 +136,9 @@ export interface Backend {
   info(): Promise<Info>
   listNotebooks(): Promise<NotebookSummary[]>
   createNotebook(title: string): Promise<NotebookSummary>
+  renameNotebook(id: string, title: string): Promise<NotebookSummary>
+  /** Permanent. The built-in samples cannot be deleted. */
+  deleteNotebook(id: string): Promise<void>
   getNotebook(id: string): Promise<Notebook>
   addMaterial(id: string, files: File[], context: string): Promise<{ notebook: Notebook; results: AddResult[] }>
   listSamplePacks(id: string): Promise<SamplePack[]>
