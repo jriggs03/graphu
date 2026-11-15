@@ -24,7 +24,8 @@ export type Toast = { text: string; action?: { label: string; run: () => void } 
 export function ToastView({ toast, close }: { toast: Toast | null; close: () => void }) {
   useEffect(() => {
     if (!toast) return
-    const timer = setTimeout(close, 8000)
+    // Longer messages stay up longer.
+    const timer = setTimeout(close, Math.max(8000, toast.text.length * 70))
     return () => clearTimeout(timer)
   }, [toast, close])
   if (!toast) return <div className="toast-slot" aria-live="polite" />
