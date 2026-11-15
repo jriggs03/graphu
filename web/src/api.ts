@@ -136,6 +136,9 @@ export interface Backend {
   info(): Promise<Info>
   listNotebooks(): Promise<NotebookSummary[]>
   createNotebook(title: string): Promise<NotebookSummary>
+  renameNotebook(id: string, title: string): Promise<NotebookSummary>
+  /** Permanent. The built-in samples cannot be deleted. */
+  deleteNotebook(id: string): Promise<void>
   getNotebook(id: string): Promise<Notebook>
   addMaterial(id: string, files: File[], context: string): Promise<{ notebook: Notebook; results: AddResult[] }>
   listSamplePacks(id: string): Promise<SamplePack[]>
@@ -149,6 +152,8 @@ export interface Backend {
   addEdge(id: string, from: string, to: string): Promise<Notebook>
   setComment(id: string, concept: string, text: string): Promise<Notebook>
   setTarget(id: string, concept: string | null): Promise<Notebook>
+  /** Choose the short symbol drawn in a concept's node. Empty goes back to the proposed one. */
+  setSymbol(id: string, concept: string, symbol: string): Promise<Notebook>
   /** Ask the AI to draw (or redraw) a small picture for a concept. Needs the server and a key. */
   drawVisual(id: string, concept: string): Promise<Notebook>
   resetSample(): Promise<void>

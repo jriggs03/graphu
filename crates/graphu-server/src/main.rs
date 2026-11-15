@@ -4,6 +4,7 @@
 //!   GRAPHU_DB    where the SQLite file lives   (default data/graphu-rs.sqlite3)
 //!   GRAPHU_WEB   folder with the built frontend (default web/dist)
 //!   GRAPHU_ADDR  address to listen on           (default 127.0.0.1:8000)
+//!   GRAPHU_ADOPT_EXISTING  set to 0 to stop the first visitor inheriting the old shared graphbooks
 //!   ANTHROPIC_API_KEY      lets Graphu read uploads with Claude. Without it only the sample works.
 //!   GRAPHU_MODEL           Claude model               (default claude-sonnet-5-5)
 //!   GRAPHU_TRANSCRIBE_CMD  command that turns an audio file ($1) into text, for voice notes
@@ -26,6 +27,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The built-in sample means the app works with no API key.
     graphu.ensure_samples()?;
 
+    // Each person gets their own file next to the main one, so nobody sees anyone else's graphs.
+    let users_dir = db.parent().unwrap_or(std::path::Path::new(".")).join("users");
+    std::fs::create_dir_all(&users_dir)?;
+    let adopt = std::env::var("GRAPHU_ADOPT_EXISTING").map(|value| value != "0").unwrap_or(true);
+    let users = graphu_server::Users { dir: users_dir, adopt_from: adopt.then(|| db.clone()) };
+
     let has_web = web.join("index.html").is_file();
     if !has_web {
         eprintln!("No built frontend at {}. Serving the API only. Run: npm --prefix web run build", web.display());
@@ -40,6 +47,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("Graphu is running at http://{addr}  (data: {})", db.display());
-    axum::serve(listener, graphu_server::app(graphu, has_web.then_some(web), settings)).await?;
+    axum::serve(listener, graphu_server::app_with_users(graphu, has_web.then_some(web), settings, Some(users))).await?;
     Ok(())
 }

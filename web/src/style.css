@@ -231,3 +231,108 @@ details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
   .goal, .legend { padding-left: 14px; padding-right: 14px; }
   .side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
 }
+
+/* ---------- arrows and legend lines ---------- */
+.arrowhead.soft { fill: var(--edge-strong); opacity: .7; }
+.arrowhead.strong { fill: var(--edge-strong); }
+.arrowhead.need { fill: var(--need-ink); }
+.arrowhead.accent, .arrowhead.new { fill: var(--accent); }
+.arrowhead.warn { fill: var(--warn); }
+.line { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge-strong); position: relative; }
+.line.arrow::after { content: ""; position: absolute; right: -2px; top: -5px; border: 4px solid transparent; border-left: 7px solid var(--edge-strong); }
+.line.dashed { border-top: 2px dashed var(--accent); }
+.line.dotted { border-top: 2px dotted var(--warn); }
+
+/* ---------- home logo ---------- */
+.wordmark { display: flex; align-items: center; gap: .25em; }
+.wordmark img { width: 1em; height: 1em; border-radius: .22em; }
+
+/* ---------- settings ---------- */
+.popover { max-height: min(560px, calc(100vh - 24px)); overflow: auto; width: 300px; }
+.popover h3 { font-size: 14px; }
+.popover hr { border: 0; border-top: 1px solid var(--line); width: 100%; margin: 2px 0; }
+.popover .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.popover .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.popover .check input { width: auto; }
+
+/* ---------- map background, like squared or dotted paper ---------- */
+html[data-background="dots"] .graph {
+  background-image: radial-gradient(circle, var(--edge-strong) 1.1px, transparent 1.6px);
+  background-size: var(--gs) var(--gs); background-position: var(--gx) var(--gy);
+}
+html[data-background="grid"] .graph {
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: var(--gs) var(--gs); background-position: var(--gx) var(--gy);
+}
+
+/* ---------- right-click and double-click menu ---------- */
+.menu-backdrop { position: fixed; inset: 0; z-index: 44; }
+.menu { position: fixed; z-index: 45; width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 10px 30px rgba(20, 15, 10, .22); display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.menu strong { padding: 2px 4px; }
+.menu > button { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 8px; }
+.menu > button:hover { background: var(--node); }
+.menu .inline { margin: 0; }
+.menu small { padding: 0 4px; }
+
+/* ---------- dark theme ---------- */
+html[data-theme="dark"] {
+  --bg: #1c1b19; --panel: #242321; --ink: #eceae4; --muted: #aaa69d; --faint: #6b6860;
+  --node: #33312d; --node-stroke: #4d4a44; --edge: #55524b; --edge-strong: #9a958a;
+  --accent: #d98f71; --accent-ink: #1c1b19; --accent-soft: #4a3229; --accent-deep: #edb9a3;
+  --need: #3f6b2a; --need-ink: #9fd97e; --need-soft: #27351f;
+  --warn: #ea917d; --warn-soft: #472a24;
+  --line: #3b3934; --code: #2f2d29; --dark: #eceae4;
+  color-scheme: dark;
+}
+html[data-theme="dark"] button.primary, html[data-theme="dark"] .route button.on, html[data-theme="dark"] .toast { color: #1c1b19; }
+html[data-theme="dark"] button.primary:hover:not(:disabled) { background: #fff; }
+html[data-theme="dark"] .toast button { color: #1c1b19; border-color: rgba(0, 0, 0, .3); }
+html[data-theme="dark"] .step text { fill: #1c1b19; }
+html[data-theme="dark"] .claim blockquote { color: var(--ink); }
+html[data-theme="dark"] .node .halo { opacity: .9; }
+/* AI pictures are drawn with dark ink, so they keep a light card in both themes. */
+.picture { background: #f8f7f4; color: #22211f; }
+.picture figcaption, .picture figcaption small { color: #45433e; }
+.picture button { background: #fffefb; color: #22211f; border-color: #e4e1da; }
+.picture .tag { background: #efeee9; color: #6f6c64; }
+
+/* ---------- accessibility ---------- */
+html[data-text="large"] .side, html[data-text="large"] .sidebar, html[data-text="large"] .hero,
+html[data-text="large"] .sheet, html[data-text="large"] .toast, html[data-text="large"] .stage-head,
+html[data-text="large"] .goal, html[data-text="large"] .legend, html[data-text="large"] .menu { zoom: 1.18; }
+html[data-text="large"] .node text:not(.flag) { font-weight: 600; }
+html[data-contrast="high"] { --muted: #45433e; --edge: #8f8a7f; --edge-strong: #55524b; --node-stroke: #8f8a7f; --line: #b9b5ac; }
+html[data-contrast="high"][data-theme="dark"] { --muted: #dcd9d1; --edge: #9a958a; --edge-strong: #d6d2c8; --node-stroke: #a8a49b; --line: #6b6860; }
+html[data-contrast="high"] .node.dim, html[data-contrast="high"] .edge.dim { opacity: .55; }
+html[data-contrast="high"] .edge { stroke-width: 2.2; }
+html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-motion="reduce"] *::after { transition: none !important; animation: none !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- rename and delete in the graphbook list ---------- */
+.notebooks li { position: relative; display: flex; flex-wrap: wrap; align-items: center; }
+.notebooks li a { flex: 1; min-width: 0; }
+.notebooks .more { border: 0; background: none; color: var(--muted); padding: 4px 10px; font-size: 18px; line-height: 1; border-radius: 8px; }
+.notebooks .more:hover, .notebooks .more[aria-expanded="true"] { background: var(--node); color: var(--ink); }
+.row-actions { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding: 2px 12px 10px; }
+.row-actions button { padding: 3px 10px; font-size: 13px; }
+button.danger { color: var(--warn); border-color: var(--warn); }
+button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color: var(--warn); }
+
+/* ---------- first visit and greeting ---------- */
+.welcome { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 24px; text-align: center; }
+.welcome form { display: flex; flex-direction: column; gap: 10px; width: min(360px, 100%); }
+.welcome label { font-size: 18px; font-weight: 600; }
+.welcome input { font-size: 18px; padding: 12px 14px; border-radius: 14px; text-align: center; }
+.welcome .primary { padding: 11px; font-size: 16px; border-radius: 14px; }
+.welcome .hint { max-width: 420px; }
+.greeting { color: var(--muted); font-size: 16px; margin-bottom: -8px; }
+.popover .row input { width: 150px; padding: 5px 8px; }
+
+/* ---------- drawing links by hand, symbols, removing ---------- */
+.linking { margin: 0 20px 6px; padding: 8px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-deep); font-size: 14px; display: flex; align-items: center; gap: 12px; }
+.linking button { margin-left: auto; padding: 3px 10px; }
+.link-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-buttons button { border-style: dashed; color: var(--muted); font-size: 13.5px; }
+.symbol-edit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
+.symbol-edit input { width: 130px; font-family: var(--mono); font-weight: 400; padding: 5px 8px; }
+.remove { align-self: flex-start; font-size: 13px; margin-top: 4px; }

@@ -15,6 +15,8 @@ services:
       # Leave the key empty to run the sample only. Uploads are then recorded but not read.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GRAPHU_MODEL: ${GRAPHU_MODEL:-claude-sonnet-5-5}
+      # On a public server, a new visitor must not inherit the old shared graphbooks.
+      GRAPHU_ADOPT_EXISTING: "0"
     volumes:
       - graphu-data:/data
 
@@ -24,9 +26,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    # Caddy gets and renews the HTTPS certificate for GRAPHU_DOMAIN by itself.
-    command: caddy reverse-proxy --from ${GRAPHU_DOMAIN:?set GRAPHU_DOMAIN in .env} --to graphu:8000
+    environment:
+      GRAPHU_DOMAIN: ${GRAPHU_DOMAIN:?set GRAPHU_DOMAIN in .env}
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
 volumes:

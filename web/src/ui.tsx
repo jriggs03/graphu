@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from './api'
 import type { AddResult } from './api'
+import { useSettings } from './settings'
+import { setName, useUser } from './identity'
 
 const PATHS: Record<string, string> = {
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm5 12 4.5 4.5',
@@ -130,6 +132,8 @@ export function Settings({ onReset }: { onReset: () => void }) {
   const [open, setOpen] = useState(false)
   const [server, setServer] = useState(false)
   const [ai, setAi] = useState(false)
+  const [settings, change] = useSettings()
+  const user = useUser()
   useEffect(() => {
     void api.info().then(info => { setServer(info.mode === 'server'); setAi(info.ai_enabled) })
   }, [])
@@ -138,6 +142,35 @@ export function Settings({ onReset }: { onReset: () => void }) {
       <Icon name="settings" /><span className="rail-label">Settings</span>
     </button>
     {open && <div className="popover" role="dialog" aria-label="Settings">
+      <h3>You</h3>
+      <label className="row">Name
+        <input defaultValue={user?.name} maxLength={60} aria-label="Your name"
+          onBlur={event => { if (event.target.value.trim()) setName(event.target.value) }} />
+      </label>
+      <small>Your graphbooks belong to this browser. On another device or browser you start fresh.</small>
+      <h3>Appearance</h3>
+      <label className="row">Theme
+        <select value={settings.theme} onChange={event => change({ theme: event.target.value as typeof settings.theme })}>
+          <option value="system">Match my device</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label className="row">Map background
+        <select value={settings.background} onChange={event => change({ background: event.target.value as typeof settings.background })}>
+          <option value="plain">Plain</option>
+          <option value="dots">Dots</option>
+          <option value="grid">Squares</option>
+        </select>
+      </label>
+      <h3>Accessibility</h3>
+      <label className="check"><input type="checkbox" checked={settings.largeText}
+        onChange={event => change({ largeText: event.target.checked })} />Larger text</label>
+      <label className="check"><input type="checkbox" checked={settings.highContrast}
+        onChange={event => change({ highContrast: event.target.checked })} />Higher contrast</label>
+      <label className="check"><input type="checkbox" checked={settings.reduceMotion}
+        onChange={event => change({ reduceMotion: event.target.checked })} />Reduce motion</label>
+      <hr />
       {server ? <>
         <h3>Connected to the Graphu server</h3>
         <p>Your graphbooks are saved on the server. {ai

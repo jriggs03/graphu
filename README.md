@@ -1,6 +1,6 @@
 # Graphu
 
-**Live:** https://3-12-190-201.sslip.io (sample only; see `deploy/README.md`)
+**Live:** https://graphu.3-12-190-201.sslip.io (sample only; see `deploy/README.md`)
 
 Graphu helps college students connect concepts across lecture PDFs. It proposes concepts and relationships, shows a document name, page number and supporting quote for each, and adds them to the map after review.
 
@@ -71,7 +71,7 @@ GRAPHU_TRANSCRIBE_CMD='scripts/transcribe.sh "$1"' ANTHROPIC_API_KEY=your-key ca
 
 The model file is about 470 MB and is not committed. `ggml-base.bin` (about 150 MB) is faster and less accurate; point `GRAPHU_WHISPER_MODEL` at whichever file you use. Any other tool works too: the command receives the audio path as `$1` and prints the transcript.
 
-The server keeps one shared workspace and has no sign-in, the same as the Python scaffold.
+There is no sign-in. The first visit asks for a name, and the browser makes up a random id that it keeps. The server stores each id's graphbooks in its own file under `data/users/`, so people only see their own. The first person to arrive after this change inherits the graphbooks from the old shared file; set `GRAPHU_ADOPT_EXISTING=0` to turn that off.
 
 For frontend development run the server, then `npm --prefix web run dev` and open http://localhost:5173. Vite forwards `/api` to port 8000.
 
@@ -94,7 +94,7 @@ cp .env.example .env   # set GRAPHU_DOMAIN, and the key if you want uploads read
 docker compose up -d --build
 ```
 
-The server needs ports 80 and 443 open and about 2 GB of memory. There is still no sign-in: anyone with the link shares one workspace, and with a key set, anyone can spend it by uploading.
+The server needs ports 80 and 443 open and about 2 GB of memory. There is still no sign-in. Each browser has its own private graphbooks, but with a key set, anyone with the link can spend it by uploading.
 
 ### Tests
 

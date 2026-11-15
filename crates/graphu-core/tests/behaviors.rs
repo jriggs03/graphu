@@ -289,3 +289,37 @@ fn a_concept_can_carry_a_safe_picture() {
     }
     assert_eq!(graphu.set_visual(CALC, "no such concept", picture, "").unwrap_err().status(), 404);
 }
+
+#[test]
+fn a_graphbook_can_be_renamed_and_deleted() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let id = graphu.create_notebook("structures in c").unwrap().id;
+    let text = "A struct groups named fields into one value.";
+    graphu.add_document(&id, document("structs.txt", text, vec![concept("Structs", 1, text)])).unwrap();
+
+    assert_eq!(graphu.rename_notebook(&id, "  Structures   in C ").unwrap().title, "Structures in C");
+    assert_eq!(graphu.rename_notebook(&id, "   ").unwrap_err().status(), 422);
+
+    graphu.delete_notebook(&id).unwrap();
+    assert_eq!(graphu.get_notebook(&id).unwrap_err().status(), 404);
+    assert_eq!(graphu.delete_notebook(&id).unwrap_err().status(), 404);
+    assert_eq!(graphu.list_notebooks().unwrap().len(), 2, "only the samples remain");
+    // The same file can be added again to a new graphbook, and its id does not clash.
+    let again = graphu.create_notebook("Again").unwrap().id;
+    assert!(!graphu.add_document(&again, document("structs.txt", text, vec![concept("Structs", 1, text)])).unwrap().duplicate);
+
+    assert_eq!(graphu.delete_notebook(CALC).unwrap_err().status(), 409, "samples stay");
+}
+
+#[test]
+fn the_student_can_choose_a_concepts_symbol() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let symbol = |n: &Notebook| n.concepts.iter().find(|c| c.id == "gradient").unwrap().symbol.clone();
+    assert_eq!(symbol(&graphu.get_notebook(CALC).unwrap()), "∇f");
+    assert_eq!(symbol(&graphu.set_symbol(CALC, "gradient", "  grad ").unwrap()), "grad");
+    assert_eq!(symbol(&graphu.set_symbol(CALC, "gradient", "").unwrap()), "∇f", "empty goes back to the proposed symbol");
+    assert_eq!(graphu.set_symbol(CALC, "gradient", "far too long a symbol").unwrap_err().status(), 422);
+    assert_eq!(graphu.set_symbol(CALC, "nope", "x").unwrap_err().status(), 404);
+}

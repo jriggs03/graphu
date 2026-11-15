@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS visuals (
     svg TEXT NOT NULL, caption TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
 );
+CREATE TABLE IF NOT EXISTS symbols (
+    notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, symbol TEXT NOT NULL,
+    PRIMARY KEY (notebook_id, concept_id)
+);
 CREATE TABLE IF NOT EXISTS comments (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, text TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
@@ -107,6 +111,7 @@ impl Graphu {
         let title = if title.is_empty() { "Untitled graphbook".to_string() } else { title };
         let tx = self.conn.transaction()?;
         let next: i64 = tx.query_row("SELECT COUNT(*) + 1 FROM notebooks", [], |row| row.get(0))?;
+        // After a deletion the count can repeat, so the loop below keeps the id unique.
         let mut id = format!("n{next}");
         while exists(&tx, "SELECT 1 FROM notebooks WHERE id = ?1", params![id])? {
             id.push('x');
@@ -115,6 +120,36 @@ impl Graphu {
         tx.execute("INSERT INTO notebooks (id, title, updated_at) VALUES (?1, ?2, ?3)", params![id, title, stamp])?;
         tx.commit()?;
         Ok(NotebookSummary { id, title, concepts: 0, pending: 0, updated_at: stamp })
+    }
+
+    pub fn rename_notebook(&mut self, id: &str, title: &str) -> Result<NotebookSummary> {
+        let title: String = normalize(title).chars().take(80).collect();
+        if title.is_empty() {
+            return Err(Error::Invalid("Give the graphbook a name.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        require_notebook(&tx, id)?;
+        tx.execute("UPDATE notebooks SET title = ?2 WHERE id = ?1", params![id, title])?;
+        touch(&tx, id)?;
+        tx.commit()?;
+        let updated_at = now(&self.conn)?;
+        Ok(summary(&view(&self.conn, id)?, updated_at))
+    }
+
+    /// Delete a graphbook and everything in it. This cannot be undone.
+    /// The built-in samples are kept, so the app always has something to show.
+    pub fn delete_notebook(&mut self, id: &str) -> Result<()> {
+        if crate::sample::notebooks().iter().any(|sample| sample.id == id) {
+            return Err(Error::Conflict("The built-in samples cannot be deleted.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        require_notebook(&tx, id)?;
+        for table in ["symbols", "visuals", "comments", "claims", "pages", "sources", "batches"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE notebook_id = ?1"), params![id])?;
+        }
+        tx.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Everything the UI needs to draw one notebook.
@@ -305,6 +340,26 @@ impl Graphu {
         tx.execute("DELETE FROM comments WHERE notebook_id = ?1 AND concept_id = ?2", params![notebook, concept])?;
         if !text.is_empty() {
             tx.execute("INSERT INTO comments VALUES (?1, ?2, ?3)", params![notebook, concept, text])?;
+        }
+        touch(&tx, notebook)?;
+        tx.commit()?;
+        self.get_notebook(notebook)
+    }
+
+    /// Set the short symbol drawn inside a concept's node. The student's choice wins over
+    /// whatever the AI proposed. An empty symbol goes back to the proposed one.
+    pub fn set_symbol(&mut self, notebook: &str, concept: &str, symbol: &str) -> Result<Notebook> {
+        let symbol = normalize(symbol);
+        if symbol.chars().count() > 12 {
+            return Err(Error::Invalid("Keep the symbol to 12 characters or fewer.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        if !view(&tx, notebook)?.concepts.iter().any(|item| item.id == concept) {
+            return Err(Error::NotFound("Concept not found.".into()));
+        }
+        tx.execute("DELETE FROM symbols WHERE notebook_id = ?1 AND concept_id = ?2", params![notebook, concept])?;
+        if !symbol.is_empty() {
+            tx.execute("INSERT INTO symbols VALUES (?1, ?2, ?3)", params![notebook, concept, symbol])?;
         }
         touch(&tx, notebook)?;
         tx.commit()?;
@@ -592,8 +647,14 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             concept.evidence.push(evidence_of(claim));
         }
     }
+    let mut statement = conn.prepare("SELECT concept_id, symbol FROM symbols WHERE notebook_id = ?1")?;
+    let chosen: HashMap<String, String> =
+        statement.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
     for concept in &mut concepts {
         concept.user_added = unsourced(concept.status, &concept.evidence);
+        if let Some(symbol) = chosen.get(&concept.id) {
+            concept.symbol = symbol.clone();
+        }
     }
     let approved = |key: &str| at.get(key).is_some_and(|&index| concepts[index].status == Status::Approved);
 

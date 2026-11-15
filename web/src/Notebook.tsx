@@ -4,7 +4,7 @@ import type { Claim, Notebook, SamplePack, Status } from './api'
 import { GraphView } from './graph/GraphView'
 import type { GraphEdge, GraphNode, Selection } from './graph/GraphView'
 import { layout, separate } from './graph/layout'
-import { RADIUS, need, route, search, tiers } from './graph/model'
+import { RADIUS, abbreviate, need, route, search, tiers } from './graph/model'
 import type { Pair, Point } from './graph/model'
 import { ConceptPanel, EdgePanel, HistoryPanel, ReviewPanel, claimText } from './Panels'
 import type { Tools } from './Panels'
@@ -28,6 +28,10 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [fitCount, setFitCount] = useState(0)
   const [adding, setAdding] = useState<File[] | null>(null)
   const searchBox = useRef<HTMLInputElement>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; world: Point; node?: string } | null>(null)
+  const [newName, setNewName] = useState('')
+  /** Set while the student is picking the other end of a link they are drawing by hand. */
+  const [linking, setLinking] = useState<{ from: string; as: 'dependent' | 'prerequisite' } | null>(null)
   const [ai, setAi] = useState(false)
   useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
@@ -57,7 +61,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     const pairs: Pair[] = notebook.edges.filter(edge => edge.status === 'approved').map(edge => [edge.from, edge.to])
     const tier = tiers(approved, pairs)
     const nodes: GraphNode[] = notebook.concepts.map(concept => ({
-      id: concept.id, label: concept.label, symbol: concept.symbol,
+      id: concept.id, label: concept.label, symbol: concept.symbol || abbreviate(concept.label),
       tier: tier.get(concept.id) ?? 1, r: RADIUS[tier.get(concept.id) ?? 1],
       pending: concept.status === 'pending', unsourced: concept.user_added,
       newEvidence: concept.evidence.some(item => item.status === 'pending'),
@@ -99,6 +103,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       if (event.key === 'Escape') {
         setQuery('')
         setAdding(null)
+        setMenu(null)
+        setLinking(null)
       }
     }
     window.addEventListener('keydown', key)
@@ -109,8 +115,21 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   if (!notebook || !graph) return <div className="lost"><p>Loading…</p></div>
 
   const select = (selection: Selection) => {
+    if (linking && selection?.kind === 'concept' && selection.id !== linking.from) {
+      // The second click of a hand-drawn link: join the two concepts.
+      const [dependent, prerequisite] = linking.as === 'dependent' ? [linking.from, selection.id] : [selection.id, linking.from]
+      setLinking(null)
+      void act(() => api.addEdge(notebook.id, dependent, prerequisite))
+      return
+    }
     setSelected(selection)
     if (selection) setMode('detail')
+  }
+  const startLink = (from: string, as: 'dependent' | 'prerequisite') => {
+    setMenu(null)
+    setSelected({ kind: 'concept', id: from })
+    setMode('detail')
+    setLinking({ from, as })
   }
 
   const decide = (claim: Claim, status: Status) => {
@@ -125,12 +144,30 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     })
   }
 
-  const tools: Tools = { notebook, order: graph.order, select, act, decide, ai }
+  const tools: Tools = { notebook, order: graph.order, select, act, decide, ai, startLink, notify }
   const pendingCount = notebook.claims.filter(claim => claim.status === 'pending'
     && !notebook.batches.find(batch => batch.id === claim.batch_id)?.undone).length
   const concept = selected?.kind === 'concept' ? notebook.concepts.find(item => item.id === selected.id) : undefined
   const edge = selected?.kind === 'edge' ? notebook.edges.find(item => item.id === selected.id) : undefined
   const approvedConcepts = notebook.concepts.filter(item => item.status === 'approved')
+
+  /** Add a concept by hand at the spot that was double-clicked or right-clicked. */
+  function addHere(at: Point) {
+    const label = newName.trim().split(/\s+/).join(' ')
+    if (!label) return
+    const key = label.toLowerCase()
+    setPositions(prior => (prior[key] ? prior : { ...prior, [key]: at }))
+    setMenu(null)
+    setNewName('')
+    void act(() => api.addConcept(notebook!.id, label)).then(ok => { if (ok) select({ kind: 'concept', id: key }) })
+  }
+
+  /** Open a concept's panel with the cursor in its notes box. */
+  function writeNote(key: string) {
+    select({ kind: 'concept', id: key })
+    setMenu(null)
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.note textarea')?.focus(), 60)
+  }
 
   function tidy() {
     const next = layout(graph!.nodes, graph!.all, {})
@@ -196,18 +233,26 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         </ol>}
       </div>
 
+      {linking && <div className="linking" role="status">
+        {linking.as === 'dependent'
+          ? <>Click the concept to learn <b>before</b> {graph.label(linking.from)}.</>
+          : <>Click the concept that <b>builds on</b> {graph.label(linking.from)}.</>}
+        <button onClick={() => setLinking(null)}>Cancel</button>
+      </div>}
+
       {graph.nodes.length ? <GraphView nodes={graph.nodes} edges={graph.edges} positions={positions}
         selected={selected} matches={matchSet} need={graph.needSet} steps={graph.steps} target={notebook.target}
-        fitKey={`${id}:${fitCount}`} onSelect={select}
+        fitKey={`${id}:${fitCount}`} onSelect={select} onMenu={at => { setNewName(''); setMenu(at) }}
         onMove={(key, point) => setPositions(prior => separate({ ...prior, [key]: point }, graph.nodes, key))}
         onMoveEnd={() => setPositions(prior => { localStorage.setItem(positionKey(id), JSON.stringify(prior)); return prior })} />
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
           <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
 
       <div className="legend">
+        <span><i className="line arrow" />Arrow: learn this first, then that</span>
+        <span><i className="line dashed" />Dashed: new, waiting for your review</span>
+        <span><i className="line dotted" />Dotted: you added it, not in your sources</span>
         <span><i className="swatch need" />Need to know for your goal</span>
-        <span><i className="swatch new" />New, waiting for review</span>
-        <span><i className="swatch unsourced" />Not in slide</span>
         <span>Bigger = more concepts rely on it</span>
       </div>
     </section>
@@ -227,6 +272,33 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
 
     {adding && <AddDialog notebook={notebook} files={adding} setFiles={setAdding} close={() => setAdding(null)}
       act={act} notify={notify} showReview={() => { setSelected(null); setMode('review') }} />}
+    {menu && <>
+      <div className="menu-backdrop" onClick={() => setMenu(null)} onContextMenu={event => { event.preventDefault(); setMenu(null) }} />
+      <div className="menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 270), top: Math.min(menu.y, innerHeight - 190) }}>
+        {menu.node ? <>
+          <strong>{graph.label(menu.node)}</strong>
+          <button role="menuitem" onClick={() => { select({ kind: 'concept', id: menu.node! }); setMenu(null) }}>See its quotes</button>
+          <button role="menuitem" onClick={() => writeNote(menu.node!)}>Write a note on it</button>
+          {approvedConcepts.some(item => item.id === menu.node) && <>
+            <button role="menuitem" onClick={() => startLink(menu.node!, 'dependent')}>Link: pick what to learn first…</button>
+            <button role="menuitem" onClick={() => startLink(menu.node!, 'prerequisite')}>Link: pick what builds on it…</button>
+          </>}
+          {approvedConcepts.some(item => item.id === menu.node) && <button role="menuitem" onClick={() => {
+            void act(() => api.setTarget(notebook.id, notebook.target === menu.node ? null : menu.node!))
+            setMenu(null)
+          }}>{notebook.target === menu.node ? 'Clear this goal' : 'I want to learn this'}</button>}
+        </> : <>
+          <strong>Add a concept here</strong>
+          <form className="inline" onSubmit={event => { event.preventDefault(); addHere(menu.world) }}>
+            <input autoFocus value={newName} maxLength={80} onChange={event => setNewName(event.target.value)}
+              placeholder="Concept name" aria-label="Name of the new concept" />
+            <button disabled={!newName.trim()}>Add</button>
+          </form>
+          <small>It is marked “not in slide !” because no source backs it.</small>
+          <button role="menuitem" onClick={() => { setAdding([]); setMenu(null) }}>Add slides, notes or a recording…</button>
+        </>}
+      </div>
+    </>}
     {dragging && !adding && <div className="drop-overlay"><div>Drop to add to {notebook.title}</div></div>}
   </div>
 }

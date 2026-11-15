@@ -1,11 +1,16 @@
 /** The real backend: each call is one HTTP request to the Graphu server (crates/graphu-server). */
 import { ApiError } from './api'
 import type { AddResult, Backend, Notebook } from './api'
+import { userId } from './identity'
 
 async function request<T>(method: string, path: string, body?: unknown, raw?: Blob): Promise<T> {
   const response = await fetch('/api' + path, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    // The user id picks this person's own workspace on the server.
+    headers: {
+      ...(userId() ? { 'X-Graphu-User': userId()! } : {}),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
     body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
   })
   const data = await response.json().catch(() => null)
@@ -24,6 +29,8 @@ export const httpBackend: Backend = {
   info: () => request('GET', '/info'),
   listNotebooks: () => request('GET', '/notebooks'),
   createNotebook: title => request('POST', '/notebooks', { title }),
+  renameNotebook: (id, title) => request('PATCH', at(id), { title }),
+  deleteNotebook: async id => { await request('DELETE', at(id)) },
   getNotebook: id => request('GET', at(id)),
 
   async addMaterial(id, files, context) {
@@ -54,6 +61,7 @@ export const httpBackend: Backend = {
   addEdge: (id, from, to) => request('POST', `${at(id)}/edges`, { from, to }),
   setComment: (id, concept, text) => request('PUT', `${at(id)}/comment`, { concept, text }),
   setTarget: (id, concept) => request('PUT', `${at(id)}/target`, { concept }),
+  setSymbol: (id, concept, symbol) => request('PUT', `${at(id)}/symbol`, { concept, symbol }),
   drawVisual: (id, concept) => request('POST', `${at(id)}/visual`, { concept }),
 
   async resetSample() {
