@@ -79,6 +79,11 @@ impl Graphu {
 
     fn init(conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        // The Python backend used a different layout. Refuse its file instead of mixing the two.
+        if exists(&conn, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'proposals'", [])? {
+            return Err(Error::Invalid(
+                "This database belongs to the Python backend. Point GRAPHU_DB at a different file.".into()));
+        }
         conn.execute_batch(SCHEMA)?;
         Ok(Self { conn })
     }

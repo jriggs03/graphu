@@ -250,3 +250,18 @@ fn a_link_from_one_upload_can_wait_for_a_concept_from_another() {
     assert_eq!((edge.from.as_str(), edge.to.as_str(), edge.relation.as_str(), edge.status), ("priority queue", "heap", "is built on", Status::Approved));
     assert_eq!(graphu.get_notebook("nope").unwrap_err().status(), 404);
 }
+
+#[test]
+fn refuses_a_database_from_the_python_backend() {
+    let path = std::env::temp_dir().join(format!("graphu-python-{}.sqlite3", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    rusqlite::Connection::open(&path).unwrap()
+        .execute_batch("CREATE TABLE sources (id TEXT PRIMARY KEY, name TEXT); CREATE TABLE proposals (id INTEGER PRIMARY KEY);").unwrap();
+    let refused = Graphu::open(&path).err().expect("the old layout is not opened");
+    assert_eq!(refused.status(), 422);
+    // Nothing was added to the old file.
+    let tables: i64 = rusqlite::Connection::open(&path).unwrap()
+        .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'", [], |row| row.get(0)).unwrap();
+    assert_eq!(tables, 2);
+    std::fs::remove_file(&path).unwrap();
+}

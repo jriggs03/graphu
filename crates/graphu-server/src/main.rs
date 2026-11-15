@@ -1,7 +1,7 @@
 //! Start the Graphu server.
 //!
 //! Settings (all optional, read from the environment):
-//!   GRAPHU_DB    where the SQLite file lives   (default data/graphu.sqlite3)
+//!   GRAPHU_DB    where the SQLite file lives   (default data/graphu-rs.sqlite3)
 //!   GRAPHU_WEB   folder with the built frontend (default web/dist)
 //!   GRAPHU_ADDR  address to listen on           (default 127.0.0.1:8000)
 
@@ -12,7 +12,7 @@ use graphu_core::Graphu;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let setting = |name: &str, fallback: &str| std::env::var(name).unwrap_or_else(|_| fallback.to_string());
-    let db = PathBuf::from(setting("GRAPHU_DB", "data/graphu.sqlite3"));
+    let db = PathBuf::from(setting("GRAPHU_DB", "data/graphu-rs.sqlite3"));
     let web = PathBuf::from(setting("GRAPHU_WEB", "web/dist"));
     let addr = setting("GRAPHU_ADDR", "127.0.0.1:8000");
 
