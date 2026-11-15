@@ -32,13 +32,15 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [newName, setNewName] = useState('')
   /** Set while the student is picking the other end of a link they are drawing by hand. */
   const [linking, setLinking] = useState<{ from: string; as: 'dependent' | 'prerequisite' } | null>(null)
+  const [showKey, setShowKey] = useState(false)
   const [ai, setAi] = useState(false)
   useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
   useEffect(() => {
     api.getNotebook(id).then(loaded => {
       setNotebook(loaded)
-      if (loaded.claims.some(claim => claim.status === 'pending')) setMode('review')
+      // On a phone the panel covers the map, so it only opens when asked for.
+      if (loaded.claims.some(claim => claim.status === 'pending') && !matchMedia('(max-width: 900px)').matches) setMode('review')
     }).catch(() => setMissing(true))
   }, [id])
 
@@ -248,16 +250,20 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
           <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
 
-      <div className="legend">
+      {/* The key to the line styles stays out of the way until asked for. */}
+      <button className="key-button" aria-label="What the lines and colors mean" aria-expanded={showKey}
+        onClick={() => setShowKey(!showKey)}>?</button>
+      {showKey && <div className="legend" role="note">
         <span><i className="line arrow" />Arrow: learn this first, then that</span>
         <span><i className="line dashed" />Dashed: new, waiting for your review</span>
         <span><i className="line dotted" />Dotted: you added it, not in your sources</span>
         <span><i className="swatch need" />Need to know for your goal</span>
         <span>Bigger = more concepts rely on it</span>
-      </div>
+      </div>}
     </section>
 
-    <aside className="side" aria-live="polite">
+    <aside className={`side${mode === 'detail' && !selected ? ' idle' : ''}`} aria-live="polite">
+      <button className="sheet-close" aria-label="Close this panel" onClick={() => { setSelected(null); setMode('detail') }}>×</button>
       {mode === 'review' ? <ReviewPanel tools={tools} />
         : mode === 'history' ? <HistoryPanel tools={tools} />
           : concept ? <ConceptPanel concept={concept} tools={tools} />
