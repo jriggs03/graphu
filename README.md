@@ -49,6 +49,24 @@ Open http://127.0.0.1:8000. The sample graphbooks load with no API key. To read 
 | `GRAPHU_MODEL` | `claude-sonnet-5-5` | Claude model used for transcription and extraction. |
 | `GRAPHU_TRANSCRIBE_CMD` | not set | Shell command for voice notes. It receives the audio file path as `$1` and prints the transcript. |
 
+### Voice notes
+
+Claude does not take audio, so voice notes are transcribed on the server with [whisper.cpp](https://github.com/ggml-org/whisper.cpp) through `scripts/transcribe.sh`. One-time setup:
+
+```sh
+brew install whisper-cpp ffmpeg
+mkdir -p models
+curl -L -o models/ggml-small.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+```
+
+Then start the server with the script as the transcription command:
+
+```sh
+GRAPHU_TRANSCRIBE_CMD='scripts/transcribe.sh "$1"' ANTHROPIC_API_KEY=your-key cargo run -p graphu-server
+```
+
+The model file is about 470 MB and is not committed. `ggml-base.bin` (about 150 MB) is faster and less accurate; point `GRAPHU_WHISPER_MODEL` at whichever file you use. Any other tool works too: the command receives the audio path as `$1` and prints the transcript.
+
 The server keeps one shared workspace and has no sign-in, the same as the Python scaffold.
 
 For frontend development run the server, then `npm --prefix web run dev` and open http://localhost:5173. Vite forwards `/api` to port 8000.
