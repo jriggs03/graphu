@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphu · Autoencoders (DATA 4620)</title>
+<style>
+  :root{
+    --bg:#f8f7f4; --ink:#22211f; --muted:#7a776f; --faint:#b9b5ac;
+    --node:#ecebe7; --node-stroke:#dad7d0; --edge:#cfcbc3; --edge-strong:#8f8a7f;
+    --accent:#c2785c; --accent-soft:#f3e3db; --bridge:#4f7cac; --bridge-soft:#e3ebf4;
+    --need:#9fd88a; --need-soft:#e6f5df; --chip:#fff; --chip-stroke:#e4e1da; --code:#efeee9; --dark:#2b2a28;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  header{padding:22px 28px 6px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+  .brand{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  h1{margin:0;font-size:26px;font-weight:650}
+  .sub{font-size:14px;color:var(--muted);margin-top:4px}
+  .search{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .search input{font:inherit;font-size:14px;border:1px solid var(--chip-stroke);border-radius:12px;padding:9px 12px;width:240px;background:#fff}
+  button{font:inherit;cursor:pointer}
+  .ghost{background:#fff;border:1px solid var(--chip-stroke);border-radius:12px;padding:8px 12px;font-size:14px;color:var(--ink)}
+  main{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:18px;padding:6px 28px 24px;align-items:start}
+  @media (max-width:900px){main{grid-template-columns:1fr} .search{margin-left:0}}
+  svg#map{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin:2px 4px}
+  .legend .lg{display:inline-flex;align-items:center;gap:6px}
+  .goalbar{display:none;align-items:center;gap:10px;background:var(--need-soft);border-radius:12px;padding:8px 12px;margin:0 4px 8px;font-size:14px}
+  .goalbar.on{display:flex}
+  .goalbar b{font-weight:600}
+  .node{cursor:pointer;outline:none}
+  .node .body{fill:var(--node);stroke:var(--node-stroke);stroke-width:1.2;transition:fill .2s,stroke .2s}
+  .node:hover .body,.node:focus-visible .body{stroke:var(--edge-strong);stroke-width:2}
+  .node text{pointer-events:none;text-anchor:middle;fill:var(--ink)}
+  .node .sym{font-family:var(--mono)}
+  .node.rel .body{stroke:var(--edge-strong);stroke-width:2}
+  .node.need .body{fill:var(--need-soft);stroke:#6fb556;stroke-width:2.4}
+  .node.sel .body{fill:var(--accent);stroke:var(--accent)} .node.sel text{fill:#fff}
+  .node.match .body{stroke:var(--accent);stroke-width:3}
+  .node.dim{opacity:.35}
+  .node.thin .body{stroke-dasharray:3 4}
+  .ord circle{fill:#4f9a3a} .ord text{fill:#fff;font-size:11px;font-weight:700;text-anchor:middle}
+  .edge{fill:none;stroke-width:2;transition:opacity .2s}
+  .edge.stated,.edge.linked{stroke:var(--edge)}
+  .edge.bridge{stroke:var(--bridge);stroke-dasharray:7 5}
+  .edge.hl{stroke-width:3.2} .edge.stated.hl,.edge.linked.hl{stroke:var(--edge-strong)}
+  .edge.needE{stroke:var(--need);stroke-width:7;stroke-linecap:round;opacity:.9}
+  .edge.dim{opacity:.25}
+  .hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer}
+  .q2 rect{fill:#fff;stroke:var(--edge-strong)} .q2 text{font-size:10px;fill:var(--muted);text-anchor:middle}
+  aside{padding:4px}
+  .card{background:#fff;border:1px solid var(--chip-stroke);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+  .card h2{font-size:21px;margin:2px 0 10px;line-height:1.25}
+  .formula{font-family:var(--mono);font-size:16px;background:var(--code);border-radius:8px;padding:10px 12px;margin:6px 0 4px;white-space:pre-wrap}
+  .quote{border-left:3px solid var(--accent);background:var(--code);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0;font-size:14px;line-height:1.5}
+  .quote .pg{display:block;font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+  .quote mark{background:#f6d9a8;padding:0 2px;border-radius:3px}
+  .kind{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;margin-bottom:6px}
+  .kind.stated{background:#eceae5;color:var(--muted)} .kind.linked{background:var(--accent-soft);color:#8a4a31} .kind.bridge{background:var(--bridge-soft);color:#2f5a86}
+  .warn{background:var(--bridge-soft);color:#2f5a86;border-radius:10px;padding:8px 12px;font-size:14px;margin:8px 0}
+  .muted{color:var(--muted);font-size:14px}
+  .rel{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .rel h4{font-size:15px;margin:0 6px 0 0}
+  .chip{font:inherit;font-size:14px;border:1px solid var(--chip-stroke);background:#fff;border-radius:12px;padding:5px 11px;cursor:pointer;color:var(--ink)}
+  .chip:hover{border-color:var(--edge-strong)}
+  .want{margin-top:12px;font:inherit;font-size:15px;background:var(--dark);color:#fff;border:0;border-radius:12px;padding:10px 16px;cursor:pointer}
+  .how ol{margin:6px 0 0;padding-left:20px;font-size:14px;line-height:1.6}
+  .how code{font-family:var(--mono);font-size:12.5px;background:var(--code);padding:1px 5px;border-radius:4px}
+  footer{padding:0 28px 22px;font-size:12px;color:var(--faint)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">Graphu · DATA 4620</div>
+    <h1>Autoencoders</h1>
+    <div class="sub">39 lecture slides → 15 concepts, 19 links. Every link cites a slide.</div>
+  </div>
+  <div class="search">
+    <input id="q" type="search" placeholder="Search concepts, formulas, slide text" aria-label="Search">
+    <button class="ghost" id="clear">Clear</button>
+  </div>
+</header>
+
+<main>
+  <div>
+    <div class="goalbar" id="goalbar"></div>
+    <svg id="map" viewBox="0 0 900 640" role="group" aria-label="Concept map"></svg>
+    <div class="legend">
+      <span class="lg"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#cfcbc3" stroke-width="3"/></svg>One slide states it</span>
+      <span class="lg"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#cfcbc3" stroke-width="3"/></svg><b style="border:1px solid #8f8a7f;border-radius:4px;padding:0 3px;font-size:10px;font-weight:400;font-family:var(--mono)">2</b>Two slides, one names the other</span>
+      <span class="lg"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#4f7cac" stroke-width="3" stroke-dasharray="7 5"/></svg>AI bridge (not in slides)</span>
+      <span class="lg">Bigger circle = more concepts rely on it</span>
+    </div>
+  </div>
+  <aside>
+    <div class="card" id="detail"></div>
+    <div class="card how">
+      <h3>How Graphu built this</h3>
+      <ol>
+        <li><b>Read</b> each slide's text and keep its page number.</li>
+        <li><b>Extract</b>: Claude proposes concepts and links, each with a quote.</li>
+        <li><b>Check</b>: Rust keeps a quote only if it's really on that slide.</li>
+        <li><b>Connect</b>: link concepts when one slide uses another's name.</li>
+        <li><b>Rank</b>: PageRank on <code>dependent → prerequisite</code> sets circle size.</li>
+        <li><b>Review</b>: you approve before anything is final.</li>
+      </ol>
+    </div>
+  </aside>
+</main>
+<footer>Prototype built from the DATA 4620 Autoencoders slides (Jonathan Ventura). Quotes are copied from the slide text; formulas are as written on the slides. Slides 22–24 and 32–33 are mostly images, so they're cited for what their titles say.</footer>
+
+<script>
+/* ---------- concepts (page = the slide that introduces it) ---------- */
+const N = {
+  ae:      {sym:"g(f(x))", label:"Autoencoder", x:440, y:175,
+            head:"An autoencoder learns to copy its input to its output", f:"r = g(f(x))",
+            q:[{t:"Autoencoder connects encoder to decoder", p:11},{t:"Autoencoder learns to copy input to output", p:2}]},
+  enc:     {sym:"f(x)", label:"Encoder", x:330, y:330,
+            head:"The encoder compresses the input into a latent vector", f:"h = f(x)",
+            q:[{t:"Encoder learns to compress data", p:9}]},
+  dec:     {sym:"g(h)", label:"Decoder", x:560, y:330,
+            head:"The decoder rebuilds the input from the latent vector", f:"r = g(h)",
+            q:[{t:"Decoder learns to decompress data", p:10}]},
+  latent:  {sym:"h", label:"Latent vector", x:450, y:475,
+            head:"The latent vector is the compressed code in the middle", f:"h = f(x)    (the “bottleneck”)",
+            q:[{t:"“Bottleneck” layer in middle of network is compressed representation", p:5},{t:"Latent vectors encoder semantic relationships", p:22}]},
+  loss:    {sym:"Σ(r−x)²", label:"Reconstruction loss", x:95, y:150,
+            head:"The loss pushes the output to equal the input", f:"MSE:  L(x;θ) = Σᵢ (rᵢ − xᵢ)²\nMAE:  L(x;θ) = Σᵢ |rᵢ − xᵢ|",
+            q:[{t:"Autoencoder loss function should make output equal to input", p:12},{t:"Usually makes output sharper (less blurry)", p:14}]},
+  ident:   {sym:"r = x", label:"Identity problem", x:205, y:310,
+            head:"Plain copying is useless, so the network must be constrained", f:"r = x   ← what we must prevent",
+            q:[{t:"Simply copying input to output is not interesting in itself", p:4},{t:"By constraining the network in some way, we can try to force the network to learn interesting properties of the data.", p:4}]},
+  under:   {sym:"dim h < x", label:"Undercomplete", x:770, y:470,
+            head:"A small bottleneck forces compression, and loses detail", f:"dim(h) < dim(x)",
+            q:[{t:"Undercomplete autoencoder compresses data", p:5},{t:"Output is blurry compared to input (loss of information)", p:25}]},
+  over:    {sym:"dim h > x", label:"Overcomplete", x:300, y:500,
+            head:"A latent vector bigger than the input can just copy it", f:"dim(h) > dim(x)",
+            q:[{t:"What if latent vector is larger than the input?", p:26},{t:"Network will probably learn to exactly copy input to output", p:27}]},
+  linear:  {sym:"Wx+b", label:"Linear AE", x:785, y:120,
+            head:"A linear autoencoder has no non-linear activations", f:"h = Wₑx + bₑ\nr = W_d(Wₑx + bₑ) + b_d",
+            q:[{t:"Linear autoencoder has no non-linear activations", p:17},{t:"Decoder is linear combination using latent vector coefficients", p:19}]},
+  nonlin:  {sym:"σ(·)", label:"Non-linear AE", x:640, y:55,
+            head:"A non-linear autoencoder adds hidden layers and activations", f:"r = g(f(x)),  f, g non-linear",
+            q:[{t:"Non-linear auto encoder uses hidden layers and non-linear activation functions", p:21}]},
+  sparse:  {sym:"λΣ|h|", label:"Sparse AE", x:80, y:470,
+            head:"A sparsity penalty keeps the latent vector mostly zeros", f:"L(x;θ) = Σᵢ (rᵢ − xᵢ)² + λ Σᵢ |hᵢ|",
+            q:[{t:"Enforcing sparsity in the latent vector is one way to prevent the auto encoder from learning the identity function.", p:28},{t:"Reconstruction loss + sparsity term", p:29}]},
+  denoise: {sym:"x + ε", label:"Denoising AE", x:190, y:590,
+            head:"A denoising autoencoder learns to remove added noise", f:"input = x + ε,   target = x",
+            q:[{t:"Alternate way to constrain autoencoder from learning identity function: Add Gaussian noise to the input before encoding and decoding", p:36}]},
+  vae:     {sym:"h ~ N", label:"Variational AE", x:620, y:590, thin:true,
+            head:"A variational autoencoder makes the bottleneck follow a distribution", f:"h ~ N(μ, σ²)",
+            q:[{t:"Tries to force bottleneck layer to follow a simple probability distribution such as a Gaussian", p:7}]},
+  repr:    {sym:"?", label:"Representation learning", x:810, y:300,
+            head:"Learn a useful representation of data without labels", f:"no labels → clusters in h?",
+            q:[{t:"Can we learn a representation of the data where classes are clustered and separated from each other, without training labels?", p:15}]},
+};
+const NAMES = {ae:["autoencoder","auto encoder"], enc:["encoder"], dec:["decoder"], latent:["latent vector","bottleneck","latent"],
+  loss:["loss"], ident:["identity function","copy input to output"], under:["undercomplete"], over:["overcomplete"]};
+
+/* dependent → prerequisite. kind: stated (one slide), linked (two slides; quote names the target), bridge (AI) */
+const E = [
+  {a:"ae", b:"enc", k:"stated", q:[{t:"Autoencoder connects encoder to decoder", p:11, hl:"encoder"}]},
+  {a:"ae", b:"dec", k:"stated", q:[{t:"Autoencoder connects encoder to decoder", p:11, hl:"decoder"}]},
+  {a:"enc", b:"latent", k:"stated", q:[{t:"Encoder learns to compress data … “Latent” vector h=f(x)", p:9, hl:"Latent"}]},
+  {a:"dec", b:"latent", k:"stated", q:[{t:"Decoder learns to decompress data … “Latent” vector r=g(h)", p:10, hl:"Latent"}]},
+  {a:"loss", b:"ae", k:"stated", q:[{t:"Autoencoder loss function should make output equal to input", p:12, hl:"Autoencoder"}]},
+  {a:"ident", b:"ae", k:"stated", q:[{t:"Simply copying input to output is not interesting in itself", p:4, hl:"copying input to output"}]},
+  {a:"under", b:"latent", k:"stated", q:[{t:"“Bottleneck” layer in middle of network is compressed representation", p:5, hl:"Bottleneck"}]},
+  {a:"under", b:"ae", k:"stated", q:[{t:"Undercomplete autoencoder compresses data", p:5, hl:"autoencoder"}]},
+  {a:"over", b:"latent", k:"stated", q:[{t:"What if latent vector is larger than the input?", p:26, hl:"latent vector"}]},
+  {a:"over", b:"ident", k:"linked", q:[{t:"Network will probably learn to exactly copy input to output", p:27, hl:"copy input to output"},{t:"Simply copying input to output is not interesting in itself", p:4}]},
+  {a:"linear", b:"ae", k:"stated", q:[{t:"Linear autoencoder has no non-linear activations", p:17, hl:"autoencoder"}]},
+  {a:"nonlin", b:"ae", k:"stated", q:[{t:"Non-linear auto encoder uses hidden layers and non-linear activation functions", p:21, hl:"auto encoder"}]},
+  {a:"sparse", b:"ident", k:"stated", q:[{t:"Enforcing sparsity in the latent vector is one way to prevent the auto encoder from learning the identity function.", p:28, hl:"identity function"}]},
+  {a:"sparse", b:"loss", k:"linked", q:[{t:"Reconstruction loss + sparsity term", p:29, hl:"loss"},{t:"Autoencoder loss function should make output equal to input", p:12}]},
+  {a:"sparse", b:"latent", k:"stated", q:[{t:"Enforcing sparsity in the latent vector is one way …", p:28, hl:"latent vector"}]},
+  {a:"denoise", b:"ident", k:"stated", q:[{t:"Alternate way to constrain autoencoder from learning identity function", p:36, hl:"identity function"}]},
+  {a:"vae", b:"latent", k:"linked", q:[{t:"Tries to force bottleneck layer to follow a simple probability distribution such as a Gaussian", p:7, hl:"bottleneck"},{t:"“Bottleneck” layer in middle of network is compressed representation", p:5}]},
+  {a:"loss", b:"ae", k:"stated", dup:true},
+  {a:"repr", b:"latent", k:"bridge", reason:"Slide 15 asks for a representation where classes cluster without labels, but never names the latent vector. Slide 22 shows latent vectors encoding semantic relationships. The latent vector is that representation."},
+].filter(e=>!e.dup);
+
+/* ---------- PageRank on dependent → prerequisite ---------- */
+function pagerank(ids, edges, d=.85){
+  const out={}, inc={}; ids.forEach(i=>{out[i]=[];inc[i]=[]});
+  edges.forEach(e=>{out[e.a].push(e.b); inc[e.b].push(e.a)});
+  let pr=Object.fromEntries(ids.map(i=>[i,1/ids.length]));
+  for(let t=0;t<200;t++){
+    const dang=ids.filter(i=>!out[i].length).reduce((s,i)=>s+pr[i],0), nx={};
+    ids.forEach(i=>nx[i]=(1-d)/ids.length + d*dang/ids.length + d*inc[i].reduce((s,j)=>s+pr[j]/out[j].length,0));
+    pr=nx;
+  }
+  return pr;
+}
+const PR = pagerank(Object.keys(N), E.filter(e=>e.k!=="bridge"));
+const maxPR = Math.max(...Object.values(PR));
+for(const id in N){ const r=PR[id]/maxPR; N[id].r = r>=.6?64 : r>=.25?54 : 49; }
+
+const learnFirst = id => E.filter(e=>e.a===id).map(e=>e.b);
+const usedBy = id => E.filter(e=>e.b===id).map(e=>e.a);
+function need(t){ const seen=new Set([t]), st=[t]; while(st.length){ const c=st.pop(); for(const p of learnFirst(c)) if(!seen.has(p)){seen.add(p);st.push(p);} } return seen; }
+function order(t){ // prerequisites before dependents
+  const ids=[...need(t)], done=new Set(), out=[];
+  const visit=c=>{ if(done.has(c))return; done.add(c); learnFirst(c).filter(p=>ids.includes(p)).forEach(visit); out.push(c); };
+  visit(t); return out;
+}
+
+/* ---------- render ---------- */
+const svg=document.getElementById("map"), NS="http://www.w3.org/2000/svg";
+const el=(t,a={},p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+let sel=null, goal=null, matches=null;
+
+function render(){
+  svg.innerHTML="";
+  const defs=el("defs");
+  [["a","#8f8a7f"],["ab","#4f7cac"],["ag","#6fb556"]].forEach(([id,c])=>{
+    const m=el("marker",{id,viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"6",markerHeight:"6",orient:"auto-start-reverse"},defs);
+    el("path",{d:"M0,0 L10,5 L0,10 z",fill:c},m);
+  });
+  const needSet = goal ? need(goal) : null;
+  const ord = goal ? order(goal) : [];
+  const rel = new Set();
+  if(sel?.n){ rel.add(sel.n); learnFirst(sel.n).forEach(x=>rel.add(x)); usedBy(sel.n).forEach(x=>rel.add(x)); }
+  if(sel?.e!=null){ rel.add(E[sel.e].a); rel.add(E[sel.e].b); }
+
+  const gE=el("g");
+  E.forEach((e,i)=>{
+    // draw in learning direction: prerequisite → dependent
+    const A=N[e.b], B=N[e.a], dx=B.x-A.x, dy=B.y-A.y, L=Math.hypot(dx,dy);
+    const x1=A.x+dx/L*(A.r+3), y1=A.y+dy/L*(A.r+3), x2=B.x-dx/L*(B.r+7), y2=B.y-dy/L*(B.r+7);
+    const onNeed = needSet && needSet.has(e.a) && needSet.has(e.b) && e.k!=="bridge";
+    const hl = (sel?.e===i) || (sel?.n && (e.a===sel.n||e.b===sel.n));
+    const dim = (sel && !hl && !onNeed) || (needSet && !onNeed && !hl) || (matches && !(matches.has(e.a)&&matches.has(e.b)));
+    if(onNeed) el("line",{x1,y1,x2,y2,class:"edge needE"},gE);
+    el("line",{x1,y1,x2,y2,class:`edge ${e.k}${hl?" hl":""}${dim?" dim":""}`,"marker-end":`url(#${e.k==="bridge"?"ab":"a"})`},gE);
+    const hit=el("line",{x1,y1,x2,y2,class:"hit"},gE); hit.addEventListener("click",()=>pick({e:i}));
+    if(e.k==="linked"){
+      const mx=(x1+x2)/2,my=(y1+y2)/2,g=el("g",{class:"q2"},gE);
+      el("rect",{x:mx-9,y:my-9,width:18,height:18,rx:5},g); const t=el("text",{x:mx,y:my+4},g); t.textContent="2";
+      g.style.cursor="pointer"; g.addEventListener("click",()=>pick({e:i}));
+    }
+  });
+
+  const gN=el("g");
+  for(const id in N){
+    const n=N[id], c=["node"];
+    if(n.thin)c.push("thin");
+    if(needSet?.has(id)) c.push("need");
+    if(sel?.n===id) c.push("sel"); else if(rel.has(id)) c.push("rel");
+    if(matches?.has(id)) c.push("match");
+    if((sel && !rel.has(id) && !needSet?.has(id)) || (needSet && !needSet.has(id) && !rel.has(id)) || (matches && !matches.has(id))) c.push("dim");
+    const g=el("g",{class:c.join(" "),tabindex:"0",role:"button","aria-label":n.label},gN);
+    el("circle",{class:"body",cx:n.x,cy:n.y,r:n.r},g);
+    const sz=Math.min(n.r>55?19:16,(1.55*n.r)/(n.sym.length*0.6));
+    const s=el("text",{class:"sym",x:n.x,y:n.y-6,"font-size":sz.toFixed(1)},g); s.textContent=n.sym;
+    const words=n.label.split(" "), fits=n.label.length*0.55*13<=1.7*n.r;
+    const lines=fits||words.length<2?[n.label]:[words.slice(0,Math.ceil(words.length/2)).join(" "),words.slice(Math.ceil(words.length/2)).join(" ")];
+    const fs=Math.min(13.5,(1.7*n.r)/(Math.max(...lines.map(x=>x.length))*0.55));
+    lines.forEach((ln,i)=>{const t=el("text",{x:n.x,y:n.y+14+i*(fs+1),"font-size":fs.toFixed(1)},g); t.textContent=ln;});
+    const oi=ord.indexOf(id);
+    if(oi>=0){ const b=el("g",{class:"ord"},g), bx=n.x-n.r*.72, by=n.y-n.r*.72; el("circle",{cx:bx,cy:by,r:11},b); const t=el("text",{x:bx,y:by+4},b); t.textContent=oi+1; }
+    g.addEventListener("click",()=>pick({n:id}));
+    g.addEventListener("keydown",ev=>{if(ev.key==="Enter")pick({n:id});});
+  }
+
+  const gb=document.getElementById("goalbar");
+  if(goal){ gb.classList.add("on"); gb.innerHTML=`Want to learn <b>${N[goal].label}</b>: need-to-know path in green, ${ord.length} concepts in order. <button class="ghost" id="cg">Clear</button>`;
+    document.getElementById("cg").onclick=()=>{goal=null;render();}; }
+  else gb.classList.remove("on");
+}
+
+/* ---------- side panel ---------- */
+const detail=document.getElementById("detail");
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+const mk=(t,hl)=>hl?esc(t).replace(new RegExp(hl.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"),m=>`<mark>${m}</mark>`):esc(t);
+const quote=q=>`<div class="quote">${mk(q.t,q.hl)}<span class="pg">slide ${q.p}</span></div>`;
+const chip=id=>`<button class="chip" data-n="${id}">${N[id].label}</button>`;
+
+function intro(){
+  detail.innerHTML=`<h3>Start here</h3><h2>Click any circle or line</h2>
+  <p class="muted">The biggest circles are what the rest of the lecture builds on. Pick a concept and press <b>Want to learn this</b> to see everything you need first, in order.</p>
+  <div class="rel"><h4>Try</h4>${chip("sparse")}${chip("over")}${chip("denoise")}</div>`;
+  wire();
+}
+function pick(s){ sel=s; render(); show(); }
+function show(){
+  if(!sel) return intro();
+  if(sel.e!=null){
+    const e=E[sel.e], A=N[e.a], B=N[e.b];
+    if(e.k==="bridge"){
+      detail.innerHTML=`<span class="kind bridge">AI bridge · not in the slides</span><h2>${A.label} → ${B.label}</h2>
+        <div class="warn">Not stated in the slides. Accept it only if it's right.</div><p class="muted">${esc(e.reason)}</p>`;
+    } else if(e.k==="linked"){
+      detail.innerHTML=`<span class="kind linked">Two slides · one names the other</span><h2>${A.label} relies on ${B.label}</h2>
+        <p class="muted">Slide ${e.q[0].p} uses it by name:</p>${quote(e.q[0])}<p class="muted">…and slide ${e.q[1].p} is where it's covered:</p>${quote(e.q[1])}`;
+    } else {
+      detail.innerHTML=`<span class="kind stated">One slide states it</span><h2>${A.label} relies on ${B.label}</h2>${quote(e.q[0])}`;
+    }
+    return wire();
+  }
+  const id=sel.n, n=N[id], lf=learnFirst(id), ub=usedBy(id);
+  detail.innerHTML=`<h3>${n.label}${n.thin?" · mentioned once":""}</h3><h2>${esc(n.head)}</h2>
+    <div class="formula">${esc(n.f)}</div>${n.q.map(quote).join("")}
+    <div class="rel"><h4>Learn first</h4>${lf.length?lf.map(chip).join(""):'<span class="muted">Nothing. Start here.</span>'}</div>
+    <div class="rel"><h4>Used by</h4>${ub.length?ub.map(chip).join(""):'<span class="muted">Nothing else in this lecture</span>'}</div>
+    ${lf.length?`<button class="want" data-goal="${id}">Want to learn this →</button>`:""}`;
+  wire();
+}
+function wire(){
+  detail.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>pick({n:b.dataset.n}));
+  detail.querySelectorAll("[data-goal]").forEach(b=>b.onclick=()=>{goal=b.dataset.goal; render();});
+}
+
+/* ---------- search ---------- */
+const qEl=document.getElementById("q");
+qEl.addEventListener("input",()=>{
+  const s=qEl.value.trim().toLowerCase();
+  matches = s ? new Set(Object.keys(N).filter(id=>{const n=N[id]; return [n.label,n.head,n.f,...n.q.map(q=>q.t)].join(" ").toLowerCase().includes(s);})) : null;
+  render();
+});
+document.getElementById("clear").onclick=()=>{qEl.value="";matches=null;sel=null;goal=null;render();intro();};
+
+render(); intro();
+</script>
+</body>
+</html>

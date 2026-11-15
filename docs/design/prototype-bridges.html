@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphu · AI bridges demo</title>
+<style>
+  :root{
+    --bg:#f8f7f4; --ink:#22211f; --muted:#7a776f; --faint:#b9b5ac;
+    --node:#ecebe7; --node-stroke:#dad7d0; --edge:#cfcbc3; --edge-strong:#8f8a7f;
+    --accent:#c2785c; --accent-soft:#f3e3db; --bridge:#4f7cac; --bridge-soft:#e3ebf4;
+    --chip:#fff; --chip-stroke:#e4e1da; --code:#efeee9; --dark:#2b2a28; --bad:#a3443a; --bad-soft:#f6e1de;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  header{padding:22px 28px 4px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px 28px}
+  .brand{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  h1{margin:0;font-size:26px;font-weight:650}
+  .sub{font-size:14px;color:var(--muted);margin-top:4px}
+  .stats{display:flex;gap:10px;align-items:center;margin-left:auto}
+  .islands{font-size:14px;background:#fff;border:1px solid var(--chip-stroke);border-radius:12px;padding:8px 14px}
+  .islands b{font-size:20px;margin-right:4px}
+  button{font:inherit;cursor:pointer}
+  .primary{background:var(--dark);color:#fff;border:0;border-radius:12px;padding:10px 16px;font-size:15px}
+  .primary:disabled{opacity:.4;cursor:default}
+  .ghost{background:#fff;border:1px solid var(--chip-stroke);border-radius:12px;padding:9px 14px;font-size:14px;color:var(--ink)}
+  main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:18px;padding:8px 28px 24px;align-items:start}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  svg#map{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin:2px 4px}
+  .legend .lg{display:inline-flex;align-items:center;gap:6px}
+  .node{cursor:pointer;outline:none}
+  .node .body{fill:var(--node);stroke:var(--node-stroke);stroke-width:1.2;transition:fill .2s,stroke .2s}
+  .node:hover .body,.node:focus-visible .body{stroke:var(--edge-strong);stroke-width:2}
+  .node text{pointer-events:none;text-anchor:middle;fill:var(--ink)}
+  .node .sym{font-family:var(--mono)}
+  .node.sel .body{fill:var(--accent);stroke:var(--accent)} .node.sel text{fill:#fff}
+  .node.bridge .body{fill:var(--bridge-soft);stroke:var(--bridge);stroke-dasharray:6 4;stroke-width:2}
+  .node.bridge.sel .body{fill:var(--bridge);stroke:var(--bridge)}
+  .node.dim{opacity:.4}
+  .flag rect{fill:var(--bad-soft)} .flag text{fill:var(--bad);font-size:11px;font-weight:600}
+  .newflag rect{fill:var(--bridge)} .newflag text{fill:#fff;font-size:11px;font-weight:600}
+  .edge{fill:none;stroke-width:2.2;transition:opacity .2s}
+  .edge.stated{stroke:var(--edge)}
+  .edge.linked{stroke:var(--edge)}
+  .edge.bridge{stroke:var(--bridge);stroke-dasharray:7 5}
+  .edge.hl{stroke-width:3.4} .edge.stated.hl,.edge.linked.hl{stroke:var(--edge-strong)}
+  .edge.dim{opacity:.3}
+  .hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer}
+  .q2 rect{fill:#fff;stroke:var(--edge-strong)} .q2 text{font-size:10px;fill:var(--muted);text-anchor:middle}
+  .island-bg{fill:none;stroke:var(--faint);stroke-dasharray:2 6;stroke-width:1.4}
+  .island-label{font-size:12px;fill:var(--faint)}
+  .appear{animation:fade .6s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  aside{padding:4px}
+  .card{background:#fff;border:1px solid var(--chip-stroke);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  .card h2{font-size:19px;margin:2px 0 8px}
+  .card h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px}
+  .kind{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;margin-bottom:8px}
+  .kind.stated{background:#eceae5;color:var(--muted)} .kind.linked{background:var(--accent-soft);color:#8a4a31}
+  .kind.bridge{background:var(--bridge-soft);color:#2f5a86}
+  .quote{border-left:3px solid var(--accent);background:var(--code);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0;font-size:14px;line-height:1.5}
+  .quote .pg{display:block;font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+  .quote mark{background:#f6d9a8;padding:0 2px;border-radius:3px}
+  .warn{background:var(--bridge-soft);color:#2f5a86;border-radius:10px;padding:8px 12px;font-size:14px;margin:8px 0}
+  .muted{color:var(--muted);font-size:14px}
+  .rev{border-top:1px solid var(--chip-stroke);padding:12px 0}
+  .rev:first-of-type{border-top:0;padding-top:0}
+  .rev .t{font-weight:600;font-size:15px} .rev .r{font-size:14px;color:var(--muted);margin:3px 0 8px}
+  .rev .acts{display:flex;gap:8px}
+  .rev .acts button{border-radius:10px;padding:6px 12px;font-size:14px;border:1px solid var(--chip-stroke);background:#fff}
+  .rev .acts .ok{background:var(--bridge);color:#fff;border-color:var(--bridge)}
+  .rev.done .t::after{content:" · accepted";color:var(--bridge);font-weight:500}
+  .drop{border-top:1px solid var(--chip-stroke);padding:10px 0;font-size:14px}
+  .drop:first-of-type{border-top:0;padding-top:0}
+  .drop b{color:var(--bad)}
+  code,.mono{font-family:var(--mono);font-size:13px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--code);border-radius:8px;padding:10px 12px;margin:8px 0 0;white-space:pre-wrap;line-height:1.5}
+  footer{padding:0 28px 22px;font-size:12px;color:var(--faint)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">Graphu · demo</div>
+    <h1>Calculus notes (handwritten, sample)</h1>
+    <div class="sub">Topics are scattered across 9 pages of notes. Graphu linked what the notes support. Some topics are still islands.</div>
+  </div>
+  <div class="stats">
+    <div class="islands" id="islands"></div>
+    <button class="primary" id="suggest">Suggest connections</button>
+    <button class="ghost" id="reset">Reset</button>
+  </div>
+</header>
+
+<main>
+  <div>
+    <svg id="map" viewBox="0 0 900 560" role="group" aria-label="Concept map"></svg>
+    <div class="legend">
+      <span class="lg"><svg width="30" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="#cfcbc3" stroke-width="3"/></svg>From one passage</span>
+      <span class="lg"><svg width="30" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="#cfcbc3" stroke-width="3"/></svg><b class="mono" style="border:1px solid #8f8a7f;border-radius:4px;padding:0 3px;font-size:10px;font-weight:400">2</b>Across your notes (2 quotes)</span>
+      <span class="lg"><svg width="30" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="#4f7cac" stroke-width="3" stroke-dasharray="7 5"/></svg>AI bridge (not in your notes)</span>
+    </div>
+  </div>
+  <aside>
+    <div class="card" id="detail"></div>
+    <div class="card" id="review" hidden></div>
+    <div class="card" id="dropped" hidden></div>
+  </aside>
+</main>
+<footer>Demo with made-up sample notes. In Graphu, Claude proposes the bridges and the Rust core runs the checks shown here before anything reaches the review queue.</footer>
+
+<script>
+/* ---------- sample notebook ---------- */
+const BASE_NODES = {
+  limits: {sym:"lim", label:"Limits", x:95,  y:300},
+  deriv:  {sym:"d/dx", label:"Derivatives", x:225, y:185},
+  grad:   {sym:"∇f", label:"Gradient", x:385, y:95},
+  optim:  {sym:"min", label:"Optimization", x:240, y:450},
+  integ:  {sym:"∫", label:"Integrals", x:585, y:330},
+  dbl:    {sym:"∬", label:"Double integrals", x:705, y:185},
+  tri:    {sym:"∭", label:"Triple integrals", x:820, y:330},
+  green:  {sym:"∮", label:"Green's theorem", x:745, y:475},
+};
+/* evidence kinds: stated = one quote; linked = two quotes, A's quote names B */
+const BASE_EDGES = [
+  {id:"e1", from:"deriv", to:"limits", kind:"stated", rel:"defined by",
+   quotes:[{text:"The derivative is defined as the limit of (f(x+h) − f(x)) / h as h → 0.", page:1, hl:"limit"}]},
+  {id:"e2", from:"grad", to:"deriv", kind:"linked", rel:"relies on",
+   quotes:[{text:"∇f collects all the partial derivatives of f into one vector.", page:4, hl:"derivatives"},
+           {text:"The derivative is defined as the limit of (f(x+h) − f(x)) / h as h → 0.", page:1}]},
+  {id:"e3", from:"optim", to:"grad", kind:"linked", rel:"relies on",
+   quotes:[{text:"To minimize the loss, keep stepping against the gradient until it is ~0.", page:5, hl:"gradient"},
+           {text:"∇f collects all the partial derivatives of f into one vector.", page:4}]},
+  {id:"e4", from:"dbl", to:"integ", kind:"stated", rel:"built from",
+   quotes:[{text:"A double integral is just an integral inside another integral (iterated).", page:6, hl:"integral"}]},
+  {id:"e5", from:"tri", to:"dbl", kind:"linked", rel:"extends",
+   quotes:[{text:"Same idea as double integrals but over a solid region, so dz dy dx.", page:8, hl:"double integrals"},
+           {text:"A double integral is just an integral inside another integral (iterated).", page:6}]},
+];
+const NOTES_ONLY = { green: {text:"Green's thm: circulation around a closed curve C equals the curl summed over the region inside it.", page:9} };
+
+/* what Claude proposes when you press "Suggest connections" */
+const PROPOSALS = [
+  {id:"b1", type:"concept", node:{id:"ftc", sym:"FTC", label:"Fundamental theorem", x:410, y:285},
+   links:[{to:"deriv"},{to:"integ"}],
+   title:"Fundamental theorem of calculus",
+   reason:"Your notes cover derivatives and integrals on separate pages. The fundamental theorem is what ties them together: integration undoes differentiation."},
+  {id:"b2", type:"edge", from:"green", to:"dbl",
+   title:"Green's theorem → Double integrals",
+   reason:"Green's theorem turns a line integral around C into a double integral over the region inside C. Your page 9 describes that region but never says “double integral.”"},
+  {id:"x1", type:"concept", node:{id:"taylor", label:"Taylor series"}, links:[{to:"deriv"}], needs:["Infinite series"],
+   title:"Taylor series", dropped:"adds prerequisites of its own (Infinite series), which would open a new topic."},
+  {id:"x2", type:"edge", from:"optim", to:"limits",
+   title:"Optimization → Limits", dropped:"both ends are already in the same island, so it connects nothing new."},
+];
+
+/* ---------- state ---------- */
+let nodes, edges, pending, rejected, selected, suggested;
+function reset(){
+  nodes = structuredClone(BASE_NODES);
+  edges = structuredClone(BASE_EDGES);
+  pending = []; rejected = new Set(); selected = null; suggested = false;
+  render(); showIntro();
+}
+
+/* ---------- graph checks (what graphu-core does) ---------- */
+function islands(nodeIds, es){
+  const parent = Object.fromEntries(nodeIds.map(i=>[i,i]));
+  const find = i => parent[i]===i ? i : (parent[i]=find(parent[i]));
+  es.forEach(e=>{ if(parent[e.from]!==undefined && parent[e.to]!==undefined) parent[find(e.from)] = find(e.to); });
+  const roots = {}; nodeIds.forEach(i=>roots[i]=find(i)); return roots;
+}
+function checkProposal(p){
+  const isl = islands(Object.keys(nodes), edges.filter(e=>e.kind!=="bridge"));
+  if(p.needs?.length) return {ok:false};
+  const ends = p.type==="concept" ? p.links.map(l=>l.to) : [p.from,p.to];
+  const touched = new Set(ends.map(id=>isl[id]));
+  return {ok: touched.size >= 2};
+}
+
+/* ---------- render ---------- */
+const svg = document.getElementById("map"), NS="http://www.w3.org/2000/svg";
+const el=(t,a={},p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+const R = 50;
+
+function render(){
+  svg.innerHTML = "";
+  const defs = el("defs");
+  [["a","#8f8a7f"],["ab","#4f7cac"]].forEach(([id,c])=>{
+    const m=el("marker",{id,viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"6",markerHeight:"6",orient:"auto-start-reverse"},defs);
+    el("path",{d:"M0,0 L10,5 L0,10 z",fill:c},m);
+  });
+
+  // island outlines
+  const ids = Object.keys(nodes), isl = islands(ids, edges.filter(e=>e.kind!=="bridge" || pending.find(p=>p.id===e.pid)?.accepted));
+  const bridgeIds = new Set(Object.keys(nodes).filter(i=>nodes[i].bridge && !nodes[i].accepted));
+  const groups = {}; ids.filter(i=>!bridgeIds.has(i)).forEach(i=>(groups[isl[i]] ||= []).push(i));
+  const gIsl = el("g");
+  Object.values(groups).forEach((g,gi)=>{
+    const xs=g.map(i=>nodes[i].x), ys=g.map(i=>nodes[i].y);
+    const pad=R+16, x=Math.min(...xs)-pad, y=Math.min(...ys)-pad, w=Math.max(...xs)-Math.min(...xs)+2*pad, h=Math.max(...ys)-Math.min(...ys)+2*pad;
+    if(Object.keys(groups).length>1){
+      el("rect",{x,y,width:w,height:h,rx:28,class:"island-bg"},gIsl);
+      const t=el("text",{x:x+14,y:y+18,class:"island-label"},gIsl); t.textContent=`island ${gi+1}`;
+    }
+  });
+  document.getElementById("islands").innerHTML = `<b>${Object.keys(groups).length}</b>${Object.keys(groups).length===1?"island":"islands"}`;
+
+  const sel = selected;
+  const relIds = new Set();
+  if(sel?.type==="node"){ relIds.add(sel.id); edges.forEach(e=>{ if(e.from===sel.id||e.to===sel.id){relIds.add(e.from);relIds.add(e.to);} }); }
+  if(sel?.type==="edge"){ const e=edges.find(x=>x.id===sel.id); if(e){relIds.add(e.from);relIds.add(e.to);} }
+
+  const gE = el("g");
+  edges.forEach(e=>{
+    const A=nodes[e.from], B=nodes[e.to]; if(!A||!B) return;
+    const dx=B.x-A.x, dy=B.y-A.y, L=Math.hypot(dx,dy);
+    const x1=A.x+dx/L*(R+3), y1=A.y+dy/L*(R+3), x2=B.x-dx/L*(R+7), y2=B.y-dy/L*(R+7);
+    const hl = sel && ((sel.type==="edge"&&sel.id===e.id) || (sel.type==="node"&&(e.from===sel.id||e.to===sel.id)));
+    const dim = sel && !hl;
+    const line = el("line",{x1,y1,x2,y2,class:`edge ${e.kind}${hl?" hl":""}${dim?" dim":""}${e.fresh?" appear":""}`,
+      "marker-end":`url(#${e.kind==="bridge"?"ab":"a"})`},gE);
+    const hit = el("line",{x1,y1,x2,y2,class:"hit"},gE);
+    hit.addEventListener("click",()=>select({type:"edge",id:e.id}));
+    if(e.kind==="linked"){
+      const mx=(x1+x2)/2, my=(y1+y2)/2, g=el("g",{class:"q2"},gE);
+      el("rect",{x:mx-9,y:my-9,width:18,height:18,rx:5},g); const t=el("text",{x:mx,y:my+4},g); t.textContent="2";
+      g.style.cursor="pointer"; g.addEventListener("click",()=>select({type:"edge",id:e.id}));
+    }
+  });
+
+  const gN = el("g");
+  for(const id in nodes){
+    const n=nodes[id];
+    const cls=["node"]; if(n.bridge)cls.push("bridge"); if(sel?.type==="node"&&sel.id===id)cls.push("sel");
+    if(sel && !relIds.has(id)) cls.push("dim"); if(n.fresh) cls.push("appear");
+    const g=el("g",{class:cls.join(" "),tabindex:"0",role:"button","aria-label":n.label},gN);
+    el("circle",{class:"body",cx:n.x,cy:n.y,r:R},g);
+    const s=el("text",{class:"sym",x:n.x,y:n.y-6,"font-size":Math.min(20,(1.5*R)/(n.sym.length*0.62)).toFixed(1)},g); s.textContent=n.sym;
+    const words=n.label.split(" "), fits=n.label.length*0.55*13 <= 1.7*R;
+    const lines = fits||words.length<2 ? [n.label] : [words.slice(0,Math.ceil(words.length/2)).join(" "), words.slice(Math.ceil(words.length/2)).join(" ")];
+    const fs = Math.min(13,(1.7*R)/(Math.max(...lines.map(x=>x.length))*0.55));
+    lines.forEach((ln,i)=>{const l=el("text",{x:n.x,y:n.y+15+i*(fs+1),"font-size":fs.toFixed(1)},g); l.textContent=ln;});
+    if(n.bridge){
+      const f=el("g",{class:n.accepted?"flag":"newflag"},g), txt=n.accepted?"not in notes !":"suggested", w=txt.length*6.3+12;
+      el("rect",{x:n.x-w/2,y:n.y-R-14,width:w,height:18,rx:9},f); const t=el("text",{x:n.x,y:n.y-R-1,"text-anchor":"middle"},f); t.textContent=txt;
+    }
+    g.addEventListener("click",()=>select({type:"node",id}));
+    g.addEventListener("keydown",ev=>{if(ev.key==="Enter"){select({type:"node",id});}});
+  }
+  edges.forEach(e=>delete e.fresh); for(const id in nodes) delete nodes[id].fresh;
+  document.getElementById("suggest").disabled = suggested;
+}
+
+/* ---------- panels ---------- */
+const detail = document.getElementById("detail");
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+const markName = (text,hl) => hl ? esc(text).replace(new RegExp(hl.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"), m=>`<mark>${m}</mark>`) : esc(text);
+const quote = q => `<div class="quote">${markName(q.text,q.hl)}<span class="pg">notes p. ${q.page}</span></div>`;
+
+function showIntro(){
+  detail.innerHTML = `<h3>How to use this demo</h3>
+    <h2>Click a line or a circle</h2>
+    <p class="muted">Lines marked <b>2</b> were found <i>across</i> pages: one page uses another page's concept by name. Then press <b>Suggest connections</b> to see AI bridges join the islands.</p>`;
+}
+
+function select(s){ selected = s; render(); showDetail(); }
+
+function showDetail(){
+  const s = selected; if(!s) return showIntro();
+  if(s.type==="edge"){
+    const e = edges.find(x=>x.id===s.id), A=nodes[e.from], B=nodes[e.to];
+    if(e.kind==="bridge"){
+      const p = pending.find(p=>p.id===e.pid);
+      detail.innerHTML = `<span class="kind bridge">AI bridge · not in your notes</span>
+        <h2>${A.label} → ${B.label}</h2><div class="warn">Not from your notes. Accept it only if it's right.</div>
+        <p class="muted">${esc(p.reason)}</p>`;
+      return;
+    }
+    detail.innerHTML = e.kind==="stated"
+      ? `<span class="kind stated">From one passage</span><h2>${A.label} → ${B.label}</h2>${quote(e.quotes[0])}`
+      : `<span class="kind linked">Across your notes · 2 quotes</span><h2>${A.label} → ${B.label}</h2>
+         <p class="muted">Page ${e.quotes[0].page} uses <b>${B.label}</b> by name:</p>${quote(e.quotes[0])}
+         <p class="muted">…and page ${e.quotes[1].page} is where your notes cover it:</p>${quote(e.quotes[1])}
+         <pre>valid_linked ⇔ quoteA on p.${e.quotes[0].page} ✓  quoteB on p.${e.quotes[1].page} ✓
+             quoteA contains "${e.quotes[0].hl}" ✓</pre>`;
+    return;
+  }
+  const n = nodes[s.id];
+  if(n.bridge){
+    const p = pending.find(p=>p.node?.id===s.id);
+    detail.innerHTML = `<span class="kind bridge">AI bridge · not in your notes</span><h2>${esc(p.title)}</h2>
+      <div class="warn">Not from your notes. Accept it only if it's right.</div><p class="muted">${esc(p.reason)}</p>`;
+    return;
+  }
+  const qs = edges.filter(e=>(e.from===s.id||e.to===s.id) && e.quotes).flatMap(e=>e.quotes)
+    .filter(q=>q.text.toLowerCase().includes(n.label.toLowerCase().split(" ")[0].slice(0,6)) || true);
+  const own = NOTES_ONLY[s.id] ? [NOTES_ONLY[s.id]] : [];
+  const uniq = [...new Map(own.concat(qs).map(q=>[q.text,q])).values()].slice(0,2);
+  const lf = edges.filter(e=>e.from===s.id).map(e=>nodes[e.to].label);
+  const ub = edges.filter(e=>e.to===s.id).map(e=>nodes[e.from].label);
+  detail.innerHTML = `<h3>Concept</h3><h2>${n.label}</h2>${uniq.map(quote).join("")}
+    <p class="muted"><b>Learn first:</b> ${lf.join(", ")||"nothing"} · <b>Used by:</b> ${ub.join(", ")||"nothing yet"}</p>`;
+}
+
+/* ---------- suggest / review ---------- */
+document.getElementById("suggest").onclick = ()=>{
+  suggested = true;
+  const kept = [], dropped = [];
+  PROPOSALS.forEach(p=>{ if(rejected.has(p.id)) return; (checkProposal(p).ok ? kept : dropped).push(p); });
+  kept.slice(0,3).forEach(p=>{
+    const item = {...p, accepted:false};
+    pending.push(item);
+    if(p.type==="concept"){
+      nodes[p.node.id] = {...p.node, bridge:true, fresh:true};
+      p.links.forEach((l,i)=>edges.push({id:`${p.id}-${i}`, from:p.node.id, to:l.to, kind:"bridge", pid:p.id, fresh:true}));
+    } else {
+      edges.push({id:p.id, from:p.from, to:p.to, kind:"bridge", pid:p.id, fresh:true});
+    }
+  });
+  render(); renderReview(); renderDropped(dropped);
+};
+
+function renderReview(){
+  const box = document.getElementById("review"); box.hidden = pending.length===0;
+  box.innerHTML = `<h3>Suggested by AI · not in your notes</h3>` + pending.map(p=>`
+    <div class="rev${p.accepted?" done":""}">
+      <div class="t">${esc(p.title)}</div><div class="r">${esc(p.reason)}</div>
+      ${p.accepted?"":`<div class="acts"><button class="ok" data-a="${p.id}">Accept</button><button data-r="${p.id}">Reject</button></div>`}
+    </div>`).join("");
+  box.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>accept(b.dataset.a));
+  box.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>reject(b.dataset.r));
+}
+function renderDropped(list){
+  const box = document.getElementById("dropped"); box.hidden = list.length===0;
+  box.innerHTML = `<h3>Dropped by Graphu's check · never shown to you</h3>` + list.map(p=>`
+    <div class="drop"><b>✕ ${esc(p.title)}</b><br><span class="muted">Claude suggested it, but it ${esc(p.dropped)}</span></div>`).join("") +
+    `<pre>keep(b) ⇔ |{ island(c) : c ∈ links(b) }| ≥ 2
+          ∧ newPrereqs(b) = ∅</pre>`;
+}
+function accept(id){
+  const p = pending.find(x=>x.id===id); p.accepted = true;
+  if(p.node) nodes[p.node.id].accepted = true;
+  render(); renderReview(); showDetail();
+}
+function reject(id){
+  rejected.add(id);
+  const p = pending.find(x=>x.id===id);
+  pending = pending.filter(x=>x.id!==id);
+  if(p.node) delete nodes[p.node.id];
+  edges = edges.filter(e=>e.pid!==id);
+  if(selected && (selected.id===p.node?.id || selected.id===id || selected.id?.startsWith(id))) selected=null;
+  render(); renderReview(); showDetail();
+}
+document.getElementById("reset").onclick = reset;
+
+reset();
+</script>
+</body>
+</html>
