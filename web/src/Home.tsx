@@ -10,6 +10,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
   const [context, setContext] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [destination, setDestination] = useState('new')
+  const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(() => {
@@ -22,7 +23,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
   async function submit() {
     setBusy(true)
     try {
-      const title = context.trim() || files[0].name.replace(/\.[^.]+$/, '')
+      const title = name.trim() || context.trim() || files[0].name.replace(/\.[^.]+$/, '')
       const id = destination === 'new' ? (await api.createNotebook(title)).id : destination
       const { results } = await api.addMaterial(id, files, context)
       notify({ text: describe(results) })
@@ -58,6 +59,9 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
     <main className="hero">
       <h1 className="wordmark">Graphu</h1>
       <p className="tagline">Your slides, notes and voice memos become a concept map. Every concept points back to the page it came from, and nothing joins the map until you approve it.</p>
+      {destination === 'new' && <input className="name-box" value={name} maxLength={80}
+        onChange={event => setName(event.target.value)} aria-label="Name of the new graphbook"
+        placeholder="Name this graphbook, for example “CSC 4800 Machine Learning”" />}
       <ContextBox context={context} setContext={setContext} files={files} setFiles={setFiles} busy={busy} onSubmit={() => void submit()}>
         <select aria-label="Add to" value={destination} onChange={event => setDestination(event.target.value)}>
           <option value="new">New graphbook</option>
