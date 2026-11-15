@@ -4,7 +4,10 @@ import { Home } from './Home'
 import { NotebookScreen } from './Notebook'
 import { ToastView } from './ui'
 import type { Toast } from './ui'
+import { applySettings } from './settings'
 import './style.css'
+
+applySettings()
 
 /** Hash routes keep the app a single static page: `#/` is home, `#/n/<id>` is a notebook. */
 function useRoute() {

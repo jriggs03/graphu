@@ -28,6 +28,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [fitCount, setFitCount] = useState(0)
   const [adding, setAdding] = useState<File[] | null>(null)
   const searchBox = useRef<HTMLInputElement>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; world: Point; node?: string } | null>(null)
+  const [newName, setNewName] = useState('')
   const [ai, setAi] = useState(false)
   useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
@@ -99,6 +101,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       if (event.key === 'Escape') {
         setQuery('')
         setAdding(null)
+        setMenu(null)
       }
     }
     window.addEventListener('keydown', key)
@@ -131,6 +134,24 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const concept = selected?.kind === 'concept' ? notebook.concepts.find(item => item.id === selected.id) : undefined
   const edge = selected?.kind === 'edge' ? notebook.edges.find(item => item.id === selected.id) : undefined
   const approvedConcepts = notebook.concepts.filter(item => item.status === 'approved')
+
+  /** Add a concept by hand at the spot that was double-clicked or right-clicked. */
+  function addHere(at: Point) {
+    const label = newName.trim().split(/\s+/).join(' ')
+    if (!label) return
+    const key = label.toLowerCase()
+    setPositions(prior => (prior[key] ? prior : { ...prior, [key]: at }))
+    setMenu(null)
+    setNewName('')
+    void act(() => api.addConcept(notebook!.id, label)).then(ok => { if (ok) select({ kind: 'concept', id: key }) })
+  }
+
+  /** Open a concept's panel with the cursor in its notes box. */
+  function writeNote(key: string) {
+    select({ kind: 'concept', id: key })
+    setMenu(null)
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.note textarea')?.focus(), 60)
+  }
 
   function tidy() {
     const next = layout(graph!.nodes, graph!.all, {})
@@ -198,16 +219,17 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
 
       {graph.nodes.length ? <GraphView nodes={graph.nodes} edges={graph.edges} positions={positions}
         selected={selected} matches={matchSet} need={graph.needSet} steps={graph.steps} target={notebook.target}
-        fitKey={`${id}:${fitCount}`} onSelect={select}
+        fitKey={`${id}:${fitCount}`} onSelect={select} onMenu={at => { setNewName(''); setMenu(at) }}
         onMove={(key, point) => setPositions(prior => separate({ ...prior, [key]: point }, graph.nodes, key))}
         onMoveEnd={() => setPositions(prior => { localStorage.setItem(positionKey(id), JSON.stringify(prior)); return prior })} />
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
           <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
 
       <div className="legend">
+        <span><i className="line arrow" />Arrow: learn this first, then that</span>
+        <span><i className="line dashed" />Dashed: new, waiting for your review</span>
+        <span><i className="line dotted" />Dotted: you added it, not in your sources</span>
         <span><i className="swatch need" />Need to know for your goal</span>
-        <span><i className="swatch new" />New, waiting for review</span>
-        <span><i className="swatch unsourced" />Not in slide</span>
         <span>Bigger = more concepts rely on it</span>
       </div>
     </section>
@@ -227,6 +249,29 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
 
     {adding && <AddDialog notebook={notebook} files={adding} setFiles={setAdding} close={() => setAdding(null)}
       act={act} notify={notify} showReview={() => { setSelected(null); setMode('review') }} />}
+    {menu && <>
+      <div className="menu-backdrop" onClick={() => setMenu(null)} onContextMenu={event => { event.preventDefault(); setMenu(null) }} />
+      <div className="menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 270), top: Math.min(menu.y, innerHeight - 190) }}>
+        {menu.node ? <>
+          <strong>{graph.label(menu.node)}</strong>
+          <button role="menuitem" onClick={() => { select({ kind: 'concept', id: menu.node! }); setMenu(null) }}>See its quotes</button>
+          <button role="menuitem" onClick={() => writeNote(menu.node!)}>Write a note on it</button>
+          {approvedConcepts.some(item => item.id === menu.node) && <button role="menuitem" onClick={() => {
+            void act(() => api.setTarget(notebook.id, notebook.target === menu.node ? null : menu.node!))
+            setMenu(null)
+          }}>{notebook.target === menu.node ? 'Clear this goal' : 'I want to learn this'}</button>}
+        </> : <>
+          <strong>Add a concept here</strong>
+          <form className="inline" onSubmit={event => { event.preventDefault(); addHere(menu.world) }}>
+            <input autoFocus value={newName} maxLength={80} onChange={event => setNewName(event.target.value)}
+              placeholder="Concept name" aria-label="Name of the new concept" />
+            <button disabled={!newName.trim()}>Add</button>
+          </form>
+          <small>It is marked “not in slide !” because no source backs it.</small>
+          <button role="menuitem" onClick={() => { setAdding([]); setMenu(null) }}>Add slides, notes or a recording…</button>
+        </>}
+      </div>
+    </>}
     {dragging && !adding && <div className="drop-overlay"><div>Drop to add to {notebook.title}</div></div>}
   </div>
 }

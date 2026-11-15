@@ -57,7 +57,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
       <Settings onReset={refresh} />
     </aside>
     <main className="hero">
-      <h1 className="wordmark">Graphu</h1>
+      <h1 className="wordmark"><img src="/icon-192.png" alt="" />Graphu</h1>
       <p className="tagline">Your slides, notes and voice memos become a concept map. Every concept points back to the page it came from, and nothing joins the map until you approve it.</p>
       {destination === 'new' && <input className="name-box" value={name} maxLength={80}
         onChange={event => setName(event.target.value)} aria-label="Name of the new graphbook"

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { Point } from './model'
 
@@ -25,6 +26,8 @@ type Props = {
   onSelect: (selection: Selection) => void
   onMove: (id: string, point: Point) => void
   onMoveEnd: () => void
+  /** Double-click or right-click: where on screen, where on the map, and which node if any. */
+  onMenu: (at: { x: number; y: number; world: Point; node?: string }) => void
 }
 
 type View = { x: number; y: number; k: number }
@@ -122,6 +125,16 @@ export function GraphView(props: Props) {
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
+  function menu(event: React.MouseEvent<SVGSVGElement>) {
+    event.preventDefault()
+    const box = wrap.current!.getBoundingClientRect()
+    props.onMenu({
+      x: event.clientX, y: event.clientY,
+      world: { x: (event.clientX - box.left - view.x) / view.k, y: (event.clientY - box.top - view.y) / view.k },
+      node: (event.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined,
+    })
+  }
+
   function move(event: ReactPointerEvent<SVGSVGElement>) {
     const current = gesture.current
     if (!current) return
@@ -163,13 +176,18 @@ export function GraphView(props: Props) {
 
   const radius = new Map(nodes.map(node => [node.id, node.r]))
 
-  return <div className="graph" ref={wrap}>
+  // The dotted or squared background moves and zooms with the map.
+  const paper = { '--gs': `${28 * view.k}px`, '--gx': `${view.x}px`, '--gy': `${view.y}px` } as React.CSSProperties
+
+  return <div className="graph" ref={wrap} style={paper}>
     <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up}
-      onPointerCancel={up} role="group" aria-label="Concept map">
+      onPointerCancel={up} onContextMenu={menu} onDoubleClick={menu} role="group" aria-label="Concept map">
       <defs>
-        {[['arrow', 'var(--edge-strong)'], ['arrow-need', 'var(--need-ink)'], ['arrow-accent', 'var(--accent)']].map(([id, fill]) =>
-          <marker key={id} id={id} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-            <path d="M0,0 L10,5 L0,10 z" fill={fill} />
+        {/* One arrowhead per line style. Colors come from the stylesheet (.arrowhead.*). */}
+        {['soft', 'strong', 'need', 'accent', 'new', 'warn'].map(kind =>
+          <marker key={kind} id={`arrow-${kind}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13"
+            orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L10,5 L0,10 z" className={`arrowhead ${kind}`} />
           </marker>)}
       </defs>
       <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
@@ -182,7 +200,7 @@ export function GraphView(props: Props) {
           const length = Math.hypot(dx, dy) || 1
           // Drawn in learning direction (prerequisite → dependent), stopping at the circle edges.
           const padA = radius.get(edge.to)! + 3
-          const padB = radius.get(edge.from)! + 7
+          const padB = radius.get(edge.from)! + 4
           const line = {
             x1: a.x + dx / length * padA, y1: a.y + dy / length * padA,
             x2: b.x - dx / length * padB, y2: b.y - dy / length * padB,
@@ -197,7 +215,8 @@ export function GraphView(props: Props) {
           return <g key={edge.id} data-edge={edge.id} className="edge-hit">
             {onPath && <line {...line} className="need-path" />}
             <line {...line} className={classes}
-              markerEnd={isSelected ? 'url(#arrow-accent)' : incident ? 'url(#arrow)' : onPath ? 'url(#arrow-need)' : undefined} />
+              markerEnd={`url(#arrow-${isSelected ? 'accent' : onPath ? 'need' : edge.pending ? 'new'
+                : edge.unsourced ? 'warn' : incident ? 'strong' : 'soft'})`} />
             <line {...line} className="hit" />
           </g>
         })}
