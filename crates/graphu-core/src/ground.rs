@@ -29,6 +29,8 @@ pub fn grounded_items(items: &[Candidate], pages: &[String]) -> Vec<Candidate> {
             quote: normalize(&raw.quote),
             page: raw.page,
             symbol: raw.symbol.as_deref().map(normalize).filter(|symbol| !symbol.is_empty()),
+            heading: raw.heading.as_deref().map(normalize).filter(|text| !text.is_empty() && length(text) <= 200),
+            snippet: raw.snippet.as_deref().map(normalize).filter(|text| !text.is_empty()),
         };
         // The page must exist and the quote must be a sensible length.
         if item.page < 1 || item.page as usize > pages.len() {
@@ -48,6 +50,16 @@ pub fn grounded_items(items: &[Candidate], pages: &[String]) -> Vec<Candidate> {
         if item.target.is_empty() != item.relation.is_empty() || key_of(&item.title) == key_of(&item.target) {
             continue;
         }
+        // A snippet gets the same check as a quote: it must be on the cited page, word for word.
+        // A snippet that fails is dropped on its own; the concept and its quote still stand.
+        let mut item = item;
+        let on_page = |text: &String| length(text) <= 300 && pages[item.page as usize - 1].contains(text.as_str());
+        if !item.target.is_empty() || !item.snippet.as_ref().is_some_and(on_page) {
+            item.snippet = None;
+        }
+        if !item.target.is_empty() {
+            item.heading = None; // headings describe concepts, not links
+        }
         kept.push(item);
     }
     kept
@@ -58,7 +70,7 @@ mod tests {
     use super::*;
 
     fn candidate(title: &str, target: &str, relation: &str, page: i64, quote: &str) -> Candidate {
-        Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None }
+        Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
     }
 
     #[test]

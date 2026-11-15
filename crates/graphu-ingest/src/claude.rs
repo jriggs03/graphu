@@ -36,9 +36,14 @@ few words a student would say aloud (\"Vertex cover\", not \"The minimum vertex 
 drawn inside a small circle. Every concept needs a `symbol` of at most 6 characters, drawn large above the \
 title so the map can be read at a glance: use the standard notation when there is one (∫, d/dx, O(n), α, \
 `stat`), otherwise the usual abbreviation (MST, TSP, VC), otherwise a short mnemonic of your own.
+- A concept also has a `heading`: one plain sentence, in your own words, saying what the concept does \
+(\"The encoder compresses the input into a latent vector\"). It is shown to the student tagged as an AI summary. \
+And a `snippet`: the one formula or line of code on that page that best shows the concept, copied exactly as \
+written (such as h = f(x)). The app checks the snippet against the page like a quote and discards it if it \
+is not there, so never write a formula from memory. Use an empty string when the page has none.
 - A link says that understanding `title` relies on first understanding `target`. Point links from the \
 dependent concept to its prerequisite. `relation` is a short lowercase phrase such as \"relies on\" or \"extends\". \
-Leave `symbol` empty. Propose a link only when the page states or directly shows the dependency, and \
+Leave `symbol`, `heading` and `snippet` empty. Propose a link only when the page states or directly shows the dependency, and \
 propose both of its concepts too.
 - Every item needs the 1-based `page` number and one `quote`: a single contiguous passage of 12 to 800 \
 characters copied from that page that supports the item.
@@ -98,6 +103,10 @@ struct Item {
     target: String,
     relation: String,
     symbol: String,
+    #[serde(default)]
+    heading: String,
+    #[serde(default)]
+    snippet: String,
     page: i64,
     quote: String,
 }
@@ -181,7 +190,7 @@ pub async fn extract(settings: &Settings, context: &str, known: &[String], pages
         json!(known), Value::Object(numbered));
     let text = json!({ "type": "string" });
     let item = object(json!({
-        "title": text, "target": text, "relation": text, "symbol": text,
+        "title": text, "target": text, "relation": text, "symbol": text, "heading": text, "snippet": text,
         "page": { "type": "integer" }, "quote": text,
     }));
     let schema = object(json!({ "items": { "type": "array", "items": item } }));
@@ -191,6 +200,8 @@ pub async fn extract(settings: &Settings, context: &str, known: &[String], pages
     Ok(extraction.items.into_iter().map(|item| Candidate {
         title: item.title, target: item.target, relation: item.relation, page: item.page, quote: item.quote,
         symbol: Some(item.symbol).filter(|symbol| !symbol.trim().is_empty() && symbol.chars().count() <= 12),
+        heading: Some(item.heading).filter(|text| !text.trim().is_empty()),
+        snippet: Some(item.snippet).filter(|text| !text.trim().is_empty()),
     }).collect())
 }
 

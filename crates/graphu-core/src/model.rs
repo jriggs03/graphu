@@ -42,6 +42,13 @@ pub struct Candidate {
     pub quote: String,
     #[serde(default)]
     pub symbol: Option<String>,
+    /// One plain-language sentence saying what the concept does. Written by the AI, so the
+    /// UI tags it "AI summary". Not checked against the page.
+    #[serde(default)]
+    pub heading: Option<String>,
+    /// A formula or line of code copied from the page. Kept only if it really is on the page.
+    #[serde(default)]
+    pub snippet: Option<String>,
 }
 
 /// Cross-note dependency proposal. Source IDs disambiguate pages in different files.
@@ -89,6 +96,18 @@ pub struct Concept {
     pub evidence: Vec<Evidence>,
     pub comment: String,
     pub visual: Option<Visual>,
+    /// The AI's one-sentence summary. Empty when there is none.
+    pub heading: String,
+    /// A formula or line of code found on a cited page.
+    pub snippet: Option<Snippet>,
+}
+
+/// A formula or line of code, with the page it was copied from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Snippet {
+    pub text: String,
+    pub page: i64,
+    pub source: String,
 }
 
 /// `from` relies on `to`: `from` is the dependent, `to` is the prerequisite.

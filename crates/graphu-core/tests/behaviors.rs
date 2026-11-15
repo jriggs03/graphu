@@ -6,11 +6,11 @@ use graphu_core::graph;
 use graphu_core::{sha256_hex, Candidate, ClaimKind, Error, Graphu, NewDocument, Notebook, Status};
 
 fn concept(title: &str, page: i64, quote: &str) -> Candidate {
-    Candidate { title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None }
+    Candidate { title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
 }
 
 fn link(title: &str, target: &str, relation: &str, page: i64, quote: &str) -> Candidate {
-    Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None }
+    Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
 }
 
 fn document(name: &str, text: &str, items: Vec<Candidate>) -> NewDocument {
@@ -322,4 +322,79 @@ fn the_student_can_choose_a_concepts_symbol() {
     assert_eq!(symbol(&graphu.set_symbol(CALC, "gradient", "").unwrap()), "∇f", "empty goes back to the proposed symbol");
     assert_eq!(graphu.set_symbol(CALC, "gradient", "far too long a symbol").unwrap_err().status(), 422);
     assert_eq!(graphu.set_symbol(CALC, "nope", "x").unwrap_err().status(), 404);
+}
+
+/// A snippet (a formula or line of code) is checked against the page exactly like a quote.
+#[test]
+fn a_snippet_is_kept_only_if_it_is_on_the_cited_page() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    let id = graphu.create_notebook("Autoencoders").unwrap().id;
+    let pages = vec![
+        "The encoder maps the input to a code:   h = f(x). The decoder maps it back.".to_string(),
+        "Reconstruction: r = g(h). Training minimizes L(x, g(f(x))).".to_string(),
+    ];
+    let item = |title: &str, page: i64, quote: &str, heading: &str, snippet: &str| Candidate {
+        title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None,
+        heading: Some(heading.into()), snippet: Some(snippet.into()),
+    };
+    let items = vec![
+        // Copied from page 1, with different spacing: kept after whitespace normalization.
+        item("Encoder", 1, "The encoder maps the input to a code", "The encoder compresses the input.", "h  =  f(x)"),
+        // On page 2, but cited on page 1: dropped, like a quote on the wrong page.
+        item("Decoder", 1, "The decoder maps it back.", "The decoder rebuilds the input.", "r = g(h)"),
+        // A formula from memory that is on no page: dropped.
+        item("Loss", 2, "Training minimizes L(x, g(f(x))).", "The loss measures the reconstruction error.", "L = ||x - r||^2"),
+        // No snippet at all is fine.
+        item("Reconstruction", 2, "Reconstruction: r = g(h).", "", ""),
+    ];
+    let added = graphu.add_document(&id, NewDocument {
+        source_id: sha256_hex(b"autoencoders"), name: "slides.pdf".into(), context: String::new(),
+        pages, items, extracted: true, note: String::new(),
+    }).unwrap();
+    // A bad snippet does not cost the concept its place: all four are proposed.
+    assert_eq!((added.count, added.dropped), (4, 0));
+
+    let notebook = graphu.get_notebook(&id).unwrap();
+    let concept = |key: &str| notebook.concepts.iter().find(|c| c.id == key).unwrap();
+    let encoder = concept("encoder");
+    assert_eq!(encoder.heading, "The encoder compresses the input.");
+    let snippet = encoder.snippet.as_ref().unwrap();
+    assert_eq!((snippet.text.as_str(), snippet.page, snippet.source.as_str()), ("h = f(x)", 1, "slides.pdf"));
+    assert!(concept("decoder").snippet.is_none(), "cited on the wrong page");
+    assert_eq!(concept("decoder").heading, "The decoder rebuilds the input.", "the summary is kept; it is tagged as AI");
+    assert!(concept("loss").snippet.is_none(), "not on any page");
+    assert!(concept("reconstruction").snippet.is_none() && concept("reconstruction").heading.is_empty());
+}
+
+#[test]
+fn links_carry_no_heading_or_snippet_and_long_ones_are_dropped() {
+    let pages = vec!["A heap is a tree. A priority queue is built on a heap: push is O(log n).".to_string()];
+    let long = "x".repeat(301);
+    let items = vec![
+        Candidate { heading: Some("Links have no summary.".into()), snippet: Some("O(log n)".into()),
+            ..link("Priority queue", "Heap", "is built on", 1, "A priority queue is built on a heap") },
+        Candidate { heading: Some("h".repeat(201)), snippet: Some(long), ..concept("Heap", 1, "A heap is a tree.") },
+        Candidate { snippet: Some("O(log n)".into()), ..concept("Priority queue", 1, "A priority queue is built on a heap") },
+    ];
+    let kept = graphu_core::ground::grounded_items(&items, &pages);
+    assert_eq!(kept.len(), 3);
+    assert!(kept[0].heading.is_none() && kept[0].snippet.is_none(), "a link");
+    assert!(kept[1].heading.is_none() && kept[1].snippet.is_none(), "too long");
+    assert_eq!(kept[2].snippet.as_deref(), Some("O(log n)"));
+}
+
+#[test]
+fn an_older_database_gains_the_new_columns() {
+    let path = std::env::temp_dir().join(format!("graphu-old-{}.sqlite3", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    {
+        let mut graphu = Graphu::open(&path).unwrap();
+        graphu.ensure_samples().unwrap();
+    }
+    // Put the file back to how it looked before headings and snippets existed.
+    rusqlite::Connection::open(&path).unwrap()
+        .execute_batch("ALTER TABLE claims DROP COLUMN heading; ALTER TABLE claims DROP COLUMN snippet;").unwrap();
+    let graphu = Graphu::open(&path).unwrap();
+    assert_eq!(graphu.get_notebook(CALC).unwrap().concepts.len(), 14);
+    std::fs::remove_file(&path).unwrap();
 }
