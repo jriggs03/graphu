@@ -73,6 +73,27 @@ The server keeps one shared workspace and has no sign-in, the same as the Python
 
 For frontend development run the server, then `npm --prefix web run dev` and open http://localhost:5173. Vite forwards `/api` to port 8000.
 
+### Run with Docker
+
+One image holds the built frontend, the server, and whisper.cpp with the "base" speech model.
+
+```sh
+docker build -t graphu .
+docker run -p 8000:8000 -v graphu-data:/data -e ANTHROPIC_API_KEY=your-key graphu
+```
+
+Open http://127.0.0.1:8000. Graphs are stored in `/data`, so keep the volume or they are lost when the container is replaced. Leave out the key to run the sample only.
+
+To put it on a server with HTTPS, `deploy/docker-compose.yml` runs the same image behind Caddy, which gets the certificate by itself. On a server with Docker installed:
+
+```sh
+cd deploy
+cp .env.example .env   # set GRAPHU_DOMAIN, and the key if you want uploads read
+docker compose up -d --build
+```
+
+The server needs ports 80 and 443 open and about 2 GB of memory. There is still no sign-in: anyone with the link shares one workspace, and with a key set, anyone can spend it by uploading.
+
 ### Tests
 
 ```sh

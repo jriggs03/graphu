@@ -21,8 +21,9 @@ if [ ! -f "$model" ]; then
 fi
 
 # whisper.cpp wants 16 kHz mono WAV, so convert whatever was uploaded.
-wav="$(mktemp -t graphu-audio).wav"
-trap 'rm -f "$wav"' EXIT
+# A template with XXXXXX works with both the macOS and the Linux mktemp.
+wav="$(mktemp "${TMPDIR:-/tmp}/graphu-audio.XXXXXX").wav"
+trap 'rm -f "$wav" "${wav%.wav}"' EXIT
 if ! ffmpeg -nostdin -loglevel error -y -i "$audio" -ar 16000 -ac 1 -f wav "$wav" 2>/dev/null; then
   echo "This recording could not be decoded." >&2
   exit 1
