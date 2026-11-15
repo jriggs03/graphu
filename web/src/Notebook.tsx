@@ -32,6 +32,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [newName, setNewName] = useState('')
   /** Set while the student is picking the other end of a link they are drawing by hand. */
   const [linking, setLinking] = useState<{ from: string; as: 'dependent' | 'prerequisite' } | null>(null)
+  const [showKey, setShowKey] = useState(false)
   const [ai, setAi] = useState(false)
   useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
@@ -249,13 +250,16 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
           <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
 
-      <div className="legend">
+      {/* The key to the line styles stays out of the way until asked for. */}
+      <button className="key-button" aria-label="What the lines and colors mean" aria-expanded={showKey}
+        onClick={() => setShowKey(!showKey)}>?</button>
+      {showKey && <div className="legend" role="note">
         <span><i className="line arrow" />Arrow: learn this first, then that</span>
         <span><i className="line dashed" />Dashed: new, waiting for your review</span>
         <span><i className="line dotted" />Dotted: you added it, not in your sources</span>
         <span><i className="swatch need" />Need to know for your goal</span>
         <span>Bigger = more concepts rely on it</span>
-      </div>
+      </div>}
     </section>
 
     <aside className={`side${mode === 'detail' && !selected ? ' idle' : ''}`} aria-live="polite">
