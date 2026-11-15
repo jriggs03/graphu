@@ -37,6 +37,8 @@ export type Concept = {
   user_added: boolean
   evidence: Evidence[]
   comment: string
+  /** A small AI-drawn picture. An illustration, not source evidence. */
+  visual: { svg: string; caption: string } | null
 }
 
 /** `from` relies on `to`: `from` is the dependent, `to` is the prerequisite. */
@@ -147,6 +149,8 @@ export interface Backend {
   addEdge(id: string, from: string, to: string): Promise<Notebook>
   setComment(id: string, concept: string, text: string): Promise<Notebook>
   setTarget(id: string, concept: string | null): Promise<Notebook>
+  /** Ask the AI to draw (or redraw) a small picture for a concept. Needs the server and a key. */
+  drawVisual(id: string, concept: string): Promise<Notebook>
   resetSample(): Promise<void>
 }
 

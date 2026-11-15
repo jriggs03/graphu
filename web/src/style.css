@@ -151,6 +151,13 @@ input, textarea {
 .callout.new { background: var(--accent-soft); color: var(--accent-deep); }
 .callout.unsourced { background: var(--warn-soft); color: var(--warn); }
 .quotes { display: flex; flex-direction: column; gap: 10px; }
+.picture { border: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--bg); }
+.picture img { display: block; width: 100%; height: auto; }
+.picture figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13.5px; color: var(--ink); margin-top: 8px; }
+.picture figcaption small { flex-basis: 100%; }
+.picture .tag { margin: 0; }
+.picture button { padding: 2px 10px; font-size: 12.5px; }
+.draw { align-self: flex-start; border-style: dashed; color: var(--muted); }
 figure { margin: 0; border-left: 3px solid var(--node-stroke); padding: 2px 0 2px 12px; }
 figure.pending { border-left: 3px dashed var(--accent); }
 blockquote { margin: 0; font-size: 15px; }

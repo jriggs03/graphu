@@ -28,6 +28,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [fitCount, setFitCount] = useState(0)
   const [adding, setAdding] = useState<File[] | null>(null)
   const searchBox = useRef<HTMLInputElement>(null)
+  const [ai, setAi] = useState(false)
+  useEffect(() => { void api.info().then(info => setAi(info.ai_enabled)) }, [])
 
   useEffect(() => {
     api.getNotebook(id).then(loaded => {
@@ -123,7 +125,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     })
   }
 
-  const tools: Tools = { notebook, order: graph.order, select, act, decide }
+  const tools: Tools = { notebook, order: graph.order, select, act, decide, ai }
   const pendingCount = notebook.claims.filter(claim => claim.status === 'pending'
     && !notebook.batches.find(batch => batch.id === claim.batch_id)?.undone).length
   const concept = selected?.kind === 'concept' ? notebook.concepts.find(item => item.id === selected.id) : undefined

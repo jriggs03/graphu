@@ -12,6 +12,8 @@ export type Tools = {
   /** Run an API call, show the new notebook, and report errors. */
   act: (run: () => Promise<Notebook>) => Promise<boolean>
   decide: (claim: Claim, status: Status) => void
+  /** True when the server has an AI key, so pictures can be drawn. */
+  ai: boolean
 }
 
 export const claimText = (claim: Claim) =>
@@ -42,6 +44,30 @@ function Chip({ concept, pending, tools }: { concept: Concept; pending: boolean;
   </button>
 }
 
+/**
+ * The AI-drawn picture for a concept. It is shown through an <img>, which cannot run
+ * scripts or load anything from outside, whatever the SVG contains.
+ */
+function Picture({ concept, tools }: { concept: Concept; tools: Tools }) {
+  const [busy, setBusy] = useState(false)
+  const draw = () => {
+    setBusy(true)
+    void tools.act(() => api.drawVisual(tools.notebook.id, concept.id)).finally(() => setBusy(false))
+  }
+  if (!concept.visual) {
+    if (!tools.ai || concept.status !== 'approved') return null
+    return <button className="draw" disabled={busy} onClick={draw}>{busy ? 'Drawing…' : 'Draw a picture of this'}</button>
+  }
+  return <figure className="picture">
+    <img alt={concept.visual.caption} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(concept.visual.svg)}`} />
+    <figcaption>
+      {concept.visual.caption} <span className="tag">AI illustration</span>
+      <small>Drawn by AI from your quotes. It is not in your sources.</small>
+      {tools.ai && <button disabled={busy} onClick={draw}>{busy ? 'Drawing…' : 'Redraw'}</button>}
+    </figcaption>
+  </figure>
+}
+
 export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tools }) {
   const { notebook, order } = tools
   const byId = new Map(notebook.concepts.map(item => [item.id, item]))
@@ -66,6 +92,7 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
     <h2>{concept.symbol && <code>{concept.symbol}</code>}{concept.label}</h2>
     {!approved && <p className="callout new">New suggestion. It is not part of your graph until you approve it.</p>}
     {concept.user_added && <p className="callout unsourced"><b>Not in slide !</b> You added this yourself. No source in this graphbook backs it.</p>}
+    <Picture concept={concept} tools={tools} />
     <Quotes evidence={concept.evidence} tools={tools} />
 
     <div className="rel"><h3>Learn first</h3>

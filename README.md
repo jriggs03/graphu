@@ -26,6 +26,8 @@ Uploads go through `crates/graphu-ingest`, then the grounding check, then your r
 
 Claude then proposes concepts and links from that text, each with a page and an exact quote. A proposal whose quote is not on the cited page is dropped. For photos, scans and audio the quote is checked against the transcription, and the batch says so.
 
+With a key, each concept's panel also has **Draw a picture of this**: Claude draws a small diagram from the concept's approved quotes. It is labelled as an AI illustration because it is not in your sources, and it is shown as a static image that cannot run code.
+
 Without `ANTHROPIC_API_KEY` the server still runs: the sample works, and uploads are recorded with a note saying they were not read. HEIC photos are not supported; export them as JPEG or PNG. Limits: 25 MB per file, 100 pages, 300,000 characters. A duplicate file is blocked by its content hash and costs no AI call.
 
 ### Run the Rust server

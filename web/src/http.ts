@@ -54,6 +54,7 @@ export const httpBackend: Backend = {
   addEdge: (id, from, to) => request('POST', `${at(id)}/edges`, { from, to }),
   setComment: (id, concept, text) => request('PUT', `${at(id)}/comment`, { concept, text }),
   setTarget: (id, concept) => request('PUT', `${at(id)}/target`, { concept }),
+  drawVisual: (id, concept) => request('POST', `${at(id)}/visual`, { concept }),
 
   async resetSample() {
     throw new ApiError(405, 'This workspace is stored on the server, so it cannot be reset from here.')
