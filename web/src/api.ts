@@ -111,8 +111,12 @@ export type AddResult = {
   duplicate: boolean
   count: number
   dropped: number
-  /** False when no AI server was available, so nothing was read from the file. */
+  /** False when nothing was proposed from the file. `note` says why. */
   extracted: boolean
+  /** Why nothing was read, or how the text was obtained (for example, an AI transcription). */
+  note: string
+  /** Set when the file was refused (unreadable, too large, AI failure). Nothing was stored. */
+  error?: string
 }
 
 export type SamplePack = { id: string; name: string; context: string }

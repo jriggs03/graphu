@@ -32,9 +32,15 @@ export const httpBackend: Backend = {
     let notebook: Notebook | undefined
     for (const file of files) {
       const query = new URLSearchParams({ name: file.name, context })
-      const added = await request<Added>('POST', `${at(id)}/documents?${query}`, undefined, file)
-      results.push(...added.results)
-      notebook = added.notebook
+      try {
+        const added = await request<Added>('POST', `${at(id)}/documents?${query}`, undefined, file)
+        results.push(...added.results)
+        notebook = added.notebook
+      } catch (error) {
+        // One bad file does not stop the others. Report why it was refused.
+        const reason = error instanceof Error ? error.message : 'The upload failed.'
+        results.push({ name: file.name, batch_id: null, duplicate: false, count: 0, dropped: 0, extracted: false, note: '', error: reason })
+      }
     }
     return { notebook: notebook ?? await this.getNotebook(id), results }
   },

@@ -40,10 +40,12 @@ export function ToastView({ toast, close }: { toast: Toast | null; close: () => 
 /** One plain sentence per file about what happened to it. */
 export function describe(results: AddResult[]) {
   return results.map(result => {
+    if (result.error) return `“${result.name}” was not added. ${result.error}`
     if (result.duplicate) return `“${result.name}” is already in this graphbook, so it was not added again.`
-    if (!result.extracted) return `“${result.name}” was saved as a batch, but AI extraction is not connected yet, so nothing was read from it.`
+    if (!result.extracted) return `“${result.name}” was saved, but not read. ${result.note}`
     const dropped = result.dropped ? ` ${result.dropped} dropped because the quote was not on the cited page.` : ''
-    return `${result.count} suggestion${result.count === 1 ? '' : 's'} from “${result.name}” ready to review.${dropped}`
+    const note = result.note ? ` ${result.note}` : ''
+    return `${result.count} suggestion${result.count === 1 ? '' : 's'} from “${result.name}” ready to review.${dropped}${note}`
   }).join(' ')
 }
 
@@ -116,9 +118,9 @@ export function ContextBox(props: {
         setFiles([...files, ...(event.target.files ?? [])])
         event.target.value = ''
       }} />
-      <span className="grow">{files.length ? '' : 'Add slides, notes or a voice memo'}</span>
+      <span className="grow">{files.length ? '' : 'Slides, PDFs, notes, photos of handwriting, voice memos'}</span>
       {props.children}
-      <button className="primary" disabled={props.busy || !files.length}>Add to graph</button>
+      <button className="primary" disabled={props.busy || !files.length}>{props.busy ? 'Reading…' : 'Add to graph'}</button>
     </div>
   </form>
 }
@@ -126,7 +128,10 @@ export function ContextBox(props: {
 export function Settings({ onReset }: { onReset: () => void }) {
   const [open, setOpen] = useState(false)
   const [server, setServer] = useState(false)
-  useEffect(() => { void api.info().then(info => setServer(info.mode === 'server')) }, [])
+  const [ai, setAi] = useState(false)
+  useEffect(() => {
+    void api.info().then(info => { setServer(info.mode === 'server'); setAi(info.ai_enabled) })
+  }, [])
   return <div className="settings">
     <button className="rail-button" aria-label="Settings" aria-expanded={open} onClick={() => setOpen(!open)}>
       <Icon name="settings" /><span className="rail-label">Settings</span>
@@ -134,7 +139,9 @@ export function Settings({ onReset }: { onReset: () => void }) {
     {open && <div className="popover" role="dialog" aria-label="Settings">
       {server ? <>
         <h3>Connected to the Graphu server</h3>
-        <p>Your graphbooks are saved on the server. AI extraction is not connected yet, so files you add are recorded but not read.</p>
+        <p>Your graphbooks are saved on the server. {ai
+          ? 'Files you add are read with Claude. Every suggestion is checked against the page it cites, then waits for your review.'
+          : 'No AI key is set on the server, so files you add are recorded but not read. The sample graphbooks still work.'}</p>
       </> : <>
         <h3>Sample mode</h3>
         <p>Graphu is running entirely in your browser on built-in sample notes. No server is connected, so files you add are recorded but not read.</p>

@@ -117,7 +117,7 @@ function addDoc(store: Db, notebook: NotebookRec, doc: SampleDoc, createdAt?: st
   if (createdAt) batch.created_at = createdAt
   notebook.sources.push({ id: doc.id, name: doc.name, batch_id: batch.id, pages: doc.pages.map(normalize) })
   const count = addItems(store, notebook, batch, doc.id, doc.items, doc.pages)
-  return { name: doc.name, batch_id: batch.id, duplicate: false, count, dropped: batch.dropped, extracted: true }
+  return { name: doc.name, batch_id: batch.id, duplicate: false, count, dropped: batch.dropped, extracted: true, note: '' }
 }
 
 function seed(): Db {
@@ -275,7 +275,7 @@ async function sha256(file: File) {
 }
 
 const duplicate = (name: string): AddResult =>
-  ({ name, batch_id: null, duplicate: true, count: 0, dropped: 0, extracted: false })
+  ({ name, batch_id: null, duplicate: true, count: 0, dropped: 0, extracted: false, note: '' })
 
 /* ---------- the Backend the UI talks to ---------- */
 
@@ -314,12 +314,10 @@ export const sampleBackend: Backend = {
         results.push(duplicate(name))
         continue
       }
-      const batch = newBatch(store, notebook, {
-        kind: 'upload', name, context: normalize(context).slice(0, 300),
-        note: 'AI extraction is not connected yet, so nothing was read from this file.',
-      })
+      const note = 'This copy of Graphu runs in your browser with no server, so nothing was read from this file.'
+      const batch = newBatch(store, notebook, { kind: 'upload', name, context: normalize(context).slice(0, 300), note })
       notebook.sources.push({ id: hash, name, batch_id: batch.id, pages: [] })
-      results.push({ name, batch_id: batch.id, duplicate: false, count: 0, dropped: 0, extracted: false })
+      results.push({ name, batch_id: batch.id, duplicate: false, count: 0, dropped: 0, extracted: false, note })
     }
     touch(notebook)
     return { notebook: view(notebook), results }
