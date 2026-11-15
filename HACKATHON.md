@@ -23,7 +23,7 @@ Clone the repository, branch from `main`, and open a pull request after running 
 
 - OpenAI Codex generated the initial scaffold and implemented manual graph creation, cross-note connection validation, paired-quote UI, and regression tests.
 - Claude Code built the Rust backend and frontend redesign. The Anthropic Claude API transcribes photos/scans, extracts concepts and relationships, proposes cross-note connections, and generates optional illustrations. The older Python backend retains its OpenAI Responses API path.
-- The Rust implementation uses Axum, Tokio, tower-http, rusqlite/SQLite, reqwest, serde/serde_json, sha2, base64, pdf-extract/lopdf, zip, and quick-xml.
+- The Rust implementation uses Axum, Tokio, tower-http, rusqlite/SQLite, reqwest, serde/serde_json, sha2, base64, pdf-extract/lopdf, and zip.
 - React, TypeScript and Vite provide the frontend and build tools.
 - FastAPI, Uvicorn, Starlette and Pydantic provide the backend and request validation. pypdf extracts PDF text. SQLite stores proposals and decisions. HTTPX supports API tests.
 - The built-in hash-table notes and Graphu icon were created for this repository. Add credits for any additional tools, media, datasets or assets before submitting.
