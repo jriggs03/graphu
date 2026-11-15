@@ -316,7 +316,7 @@ export const sampleBackend: Backend = {
       }
       const batch = newBatch(store, notebook, {
         kind: 'upload', name, context: normalize(context).slice(0, 300),
-        note: 'No AI server is connected in this sample build, so nothing was read from this file.',
+        note: 'AI extraction is not connected yet, so nothing was read from this file.',
       })
       notebook.sources.push({ id: hash, name, batch_id: batch.id, pages: [] })
       results.push({ name, batch_id: batch.id, duplicate: false, count: 0, dropped: 0, extracted: false })

@@ -1,11 +1,16 @@
 /**
  * The single door between the UI and the backend.
  *
- * Every screen imports from here and nowhere else. Today the calls are answered by an
- * in-browser sample backend (`sample/store.ts`) so the app runs with no server and no API key.
- * When the Rust server lands, swap the `backend` object below for one that calls `fetch`
- * (or Tauri `invoke`) and returns the same shapes. Nothing else in the UI has to change.
+ * Every screen imports `api` from here and nowhere else. Behind it sits one of two backends
+ * with the same shape:
+ *
+ *   - `http.ts`          the Graphu server. Used when `/api/info` answers.
+ *   - `sample/store.ts`  an in-browser stand-in. Used when there is no server, so a static
+ *                        copy of the site still works with the built-in sample.
+ *
+ * A Tauri desktop shell can add a third that calls `invoke`. Nothing else in the UI changes.
  */
+import { httpBackend } from './http'
 import { sampleBackend } from './sample/store'
 
 export type Status = 'pending' | 'approved' | 'rejected'
@@ -141,6 +146,17 @@ export interface Backend {
   resetSample(): Promise<void>
 }
 
-const backend: Backend = sampleBackend
+let chosen: Promise<Backend> | undefined
 
-export const api = backend
+/** Ask once whether a Graphu server is there. If not, fall back to the in-browser sample. */
+function backend(): Promise<Backend> {
+  chosen ??= fetch('/api/info')
+    .then(response => response.ok && (response.headers.get('content-type') ?? '').includes('json'))
+    .then(found => (found ? httpBackend : sampleBackend), () => sampleBackend)
+  return chosen
+}
+
+export const api = new Proxy({} as Backend, {
+  get: (_, name: keyof Backend) => (...args: unknown[]) =>
+    backend().then(found => (found[name] as (...values: unknown[]) => unknown)(...args)),
+})

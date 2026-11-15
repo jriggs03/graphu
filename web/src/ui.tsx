@@ -41,7 +41,7 @@ export function ToastView({ toast, close }: { toast: Toast | null; close: () => 
 export function describe(results: AddResult[]) {
   return results.map(result => {
     if (result.duplicate) return `“${result.name}” is already in this graphbook, so it was not added again.`
-    if (!result.extracted) return `“${result.name}” was saved as a batch, but this sample build has no AI server, so nothing was read from it.`
+    if (!result.extracted) return `“${result.name}” was saved as a batch, but AI extraction is not connected yet, so nothing was read from it.`
     const dropped = result.dropped ? ` ${result.dropped} dropped because the quote was not on the cited page.` : ''
     return `${result.count} suggestion${result.count === 1 ? '' : 's'} from “${result.name}” ready to review.${dropped}`
   }).join(' ')
@@ -125,17 +125,24 @@ export function ContextBox(props: {
 
 export function Settings({ onReset }: { onReset: () => void }) {
   const [open, setOpen] = useState(false)
+  const [server, setServer] = useState(false)
+  useEffect(() => { void api.info().then(info => setServer(info.mode === 'server')) }, [])
   return <div className="settings">
     <button className="rail-button" aria-label="Settings" aria-expanded={open} onClick={() => setOpen(!open)}>
       <Icon name="settings" /><span className="rail-label">Settings</span>
     </button>
     {open && <div className="popover" role="dialog" aria-label="Settings">
-      <h3>Sample mode</h3>
-      <p>Graphu is running entirely in your browser on built-in sample notes. No AI server is connected, so files you add are recorded but not read.</p>
-      <button onClick={() => {
-        if (!confirm('Reset every graphbook in this browser back to the original sample?')) return
-        void api.resetSample().then(() => { setOpen(false); onReset() })
-      }}>Reset sample data</button>
+      {server ? <>
+        <h3>Connected to the Graphu server</h3>
+        <p>Your graphbooks are saved on the server. AI extraction is not connected yet, so files you add are recorded but not read.</p>
+      </> : <>
+        <h3>Sample mode</h3>
+        <p>Graphu is running entirely in your browser on built-in sample notes. No server is connected, so files you add are recorded but not read.</p>
+        <button onClick={() => {
+          if (!confirm('Reset every graphbook in this browser back to the original sample?')) return
+          void api.resetSample().then(() => { setOpen(false); onReset() })
+        }}>Reset sample data</button>
+      </>}
       <button className="quiet" onClick={() => setOpen(false)}>Close</button>
     </div>}
   </div>
