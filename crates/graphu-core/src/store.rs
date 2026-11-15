@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS claims (
     page INTEGER NOT NULL, quote TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected'))
 );
+CREATE TABLE IF NOT EXISTS linked_evidence (
+    claim_id INTEGER PRIMARY KEY REFERENCES claims(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL, page INTEGER NOT NULL, quote TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS claims_by_notebook ON claims(notebook_id);
 CREATE TABLE IF NOT EXISTS visuals (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL,
@@ -290,6 +294,61 @@ impl Graphu {
         touch(&tx, notebook)?;
         tx.commit()?;
         self.get_notebook(notebook)
+    }
+
+    pub fn set_batch_note(&mut self, notebook: &str, batch: &str, note: &str) -> Result<()> {
+        let batch = batch_id(batch)?;
+        require_batch(&self.conn, notebook, batch)?;
+        self.conn.execute("UPDATE batches SET note = ?3 WHERE notebook_id = ?1 AND id = ?2", params![notebook, batch, note])?;
+        Ok(())
+    }
+
+    /// Validate both passages using stored pages; one claim owns the two quotes so review is atomic.
+    /// Attach links to this upload's batch so undoing the upload also undoes its connection pass.
+    pub fn add_linked(&mut self, notebook: &str, batch: &str, items: &[LinkedCandidate]) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let batch = batch_id(batch)?;
+        require_batch(&tx, notebook, batch)?;
+        let shown = view(&tx, notebook)?;
+        if shown.batches.iter().any(|b| b.id == batch.to_string() && b.undone) {
+            return Ok(0);
+        }
+        let mut count = 0;
+        for item in items.iter().take(60) {
+            let (title, target, relation) = (normalize(&item.title), normalize(&item.target), normalize(&item.relation));
+            let (a, b) = (normalize(&item.quote_a), normalize(&item.quote_b));
+            let from = key_of(&title);
+            let to = key_of(&target);
+            if from == to || relation.is_empty() || relation.chars().count() > 60
+                || !shown.concepts.iter().any(|c| c.id == from)
+                || !shown.concepts.iter().any(|c| c.id == to) {
+                continue;
+            }
+            let on_page = |source: &str, page: i64, quote: &str| {
+                (12..=800).contains(&quote.chars().count()) && page > 0 && shown.sources.iter()
+                    .find(|s| s.id == source).and_then(|s| s.pages.get((page - 1) as usize))
+                    .is_some_and(|text| normalize(text).contains(quote))
+            };
+            if !on_page(&item.source_a, item.page_a, &a) || !on_page(&item.source_b, item.page_b, &b)
+                || !mentions_name(&a, &target) {
+                continue;
+            }
+            // The graph has one link per ordered pair. Do not revive a rejected pair by
+            // rephrasing its relation, or duplicate an existing pending/approved claim.
+            if exists(&tx, "SELECT 1 FROM claims WHERE notebook_id = ?1 AND title_key = ?2 AND target_key = ?3",
+                params![notebook, from, to])? {
+                continue;
+            }
+            insert_claim(&tx, notebook, batch, Some(&item.source_a), &title, &target, &relation,
+                "", item.page_a, &a, Status::Pending)?;
+            let claim = tx.last_insert_rowid();
+            tx.execute("INSERT INTO linked_evidence VALUES (?1, ?2, ?3, ?4)",
+                params![claim, item.source_b, item.page_b, b])?;
+            count += 1;
+        }
+        touch(&tx, notebook)?;
+        tx.commit()?;
+        Ok(count)
     }
 
     /* ---------- the student's own additions ---------- */
@@ -611,16 +670,34 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
         .query_map(params![id], |row| Ok((row.get(0)?, Visual { svg: row.get(1)?, caption: row.get(2)? })))?
         .collect::<rusqlite::Result<_>>()?;
 
+    let mut statement = conn.prepare("SELECT e.claim_id, e.source_id, e.page, e.quote FROM linked_evidence e JOIN claims c ON c.id = e.claim_id WHERE c.notebook_id = ?1")?;
+    let linked: HashMap<i64, (String, i64, String)> = statement.query_map(params![id], |row|
+        Ok((row.get(0)?, (row.get(1)?, row.get(2)?, row.get(3)?))))?.collect::<rusqlite::Result<_>>()?;
+    let active_source = |source: &str| sources.iter().any(|s| s.id == source && !undone.contains(&s.batch_id));
+    let active_link = |claim: &ClaimRow| linked.get(&claim.id).is_none_or(|(source, _, _)|
+        active_source(source) && claim.source_id.as_deref().is_some_and(&active_source));
+
     let evidence_of = |claim: &ClaimRow| Evidence {
         claim_id: claim.id, batch_id: claim.batch_id.to_string(), source_id: claim.source_id.clone().unwrap_or_default(),
         source: name_of(&claim.source_id), page: claim.page, quote: claim.quote.clone(), status: claim.status,
+    };
+    let all_evidence = |claim: &ClaimRow| {
+        let mut evidence = Vec::new();
+        if claim.source_id.is_some() {
+            evidence.push(evidence_of(claim));
+        }
+        if let Some((source, page, quote)) = linked.get(&claim.id) {
+            evidence.push(Evidence { source_id: source.clone(), source: source_name.get(source).cloned().unwrap_or_default(),
+                page: *page, quote: quote.clone(), ..evidence_of(claim) });
+        }
+        evidence
     };
     // Unsourced = nothing approved backs it (or, for a pending item, nothing backs it at all).
     let unsourced = |status: Status, evidence: &[Evidence]| {
         !evidence.iter().any(|item| status == Status::Pending || item.status == Status::Approved)
     };
     let live: Vec<&ClaimRow> = rows.iter()
-        .filter(|claim| !undone.contains(&claim.batch_id.to_string()) && claim.status != Status::Rejected).collect();
+        .filter(|claim| !undone.contains(&claim.batch_id.to_string()) && claim.status != Status::Rejected && active_link(claim)).collect();
 
     // Concepts: one per name, approved as soon as any claim for it is approved.
     let mut concepts: Vec<Concept> = Vec::new();
@@ -670,6 +747,7 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
         let key = format!("{from}->{to}");
         let index = *edge_at.entry(key.clone()).or_insert_with(|| {
             edges.push(Edge {
+                evidence_kind: "stated".into(),
                 id: key.clone(), from: from.clone(), to: to.clone(), relation: claim.relation.clone(),
                 status: Status::Pending, user_added: false, evidence: Vec::new(),
             });
@@ -681,7 +759,10 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             edges[index].relation = claim.relation.clone();
         }
         if claim.source_id.is_some() {
-            edges[index].evidence.push(evidence_of(claim));
+            edges[index].evidence.extend(all_evidence(claim));
+            if linked.contains_key(&claim.id) {
+                edges[index].evidence_kind = "linked".into();
+            }
         }
     }
     for (index, edge) in edges.iter_mut().enumerate() {
@@ -690,11 +771,13 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
         edge.status = if any_approved[index] && approved(&edge.from) && approved(&edge.to) { Status::Approved } else { Status::Pending };
     }
 
-    let claims: Vec<Claim> = rows.iter().map(|claim| {
+    let claims: Vec<Claim> = rows.iter().filter(|claim| active_link(claim)).map(|claim| {
         let (concept_id, target_id) = (key_of(&claim.title), key_of(&claim.target));
         let kind = if claim.target.is_empty() { ClaimKind::Concept } else { ClaimKind::Edge };
         let pair_approved = edge_at.get(&format!("{concept_id}->{target_id}")).is_some_and(|&index| any_approved[index]);
         Claim {
+            evidence_kind: if linked.contains_key(&claim.id) { "linked" } else { "stated" }.into(),
+            evidence: all_evidence(claim),
             id: claim.id, batch_id: claim.batch_id.to_string(), kind, title: claim.title.clone(),
             target: claim.target.clone(), relation: claim.relation.clone(), quote: claim.quote.clone(), page: claim.page,
             source: name_of(&claim.source_id), status: claim.status,
@@ -708,4 +791,16 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
     let target = target.filter(|key| approved(key));
     sources.retain(|source| !undone.contains(&source.batch_id));
     Ok(Notebook { id: id.to_string(), title, concepts, edges, claims, batches, sources, target })
+}
+
+/// Match names as tokens, avoiding false matches such as "art" inside "partial".
+fn mentions_name(quote: &str, name: &str) -> bool {
+    let quote = key_of(quote);
+    let name = key_of(name);
+    !name.is_empty() && quote.match_indices(&name).any(|(i, _)| {
+        let left = quote[..i].chars().next_back();
+        let right = quote[i + name.len()..].chars().next();
+        !left.is_some_and(|c| c.is_alphanumeric() || c == '_')
+            && !right.is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
 }

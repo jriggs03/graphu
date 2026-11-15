@@ -69,7 +69,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       newEvidence: concept.evidence.some(item => item.status === 'pending'),
     }))
     const edges: GraphEdge[] = notebook.edges.map(edge => ({
-      id: edge.id, from: edge.from, to: edge.to, pending: edge.status === 'pending', unsourced: edge.user_added,
+      id: edge.id, from: edge.from, to: edge.to, pending: edge.status === 'pending', unsourced: edge.user_added, linked: edge.evidence_kind === 'linked',
     }))
     const label = (key: string) => notebook.concepts.find(concept => concept.id === key)?.label ?? key
     const order = notebook.target ? route(notebook.target, pairs, label) : []
@@ -184,7 +184,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       <button className="rail-button" aria-label="Search" onClick={() => searchBox.current?.focus()}>
         <Icon name="search" /><span className="rail-label">Search</span>
       </button>
-      <button className="rail-button" aria-label="Add material" onClick={() => setAdding([])}>
+      <button className="rail-button" aria-label="Add concepts or material" onClick={() => setAdding([])}>
         <Icon name="add" /><span className="rail-label">Add</span>
       </button>
       <button className="rail-button" aria-label="Sources and history" aria-pressed={mode === 'history'}
@@ -248,7 +248,13 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         onMove={(key, point) => setPositions(prior => separate({ ...prior, [key]: point }, graph.nodes, key))}
         onMoveEnd={() => setPositions(prior => { localStorage.setItem(positionKey(id), JSON.stringify(prior)); return prior })} />
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
-          <button className="primary" onClick={() => setAdding([])}>Add material</button></div>}
+          <p>Build it yourself, or add notes for suggestions.</p>
+          <form className="inline" onSubmit={event => { event.preventDefault(); addHere({ x: 0, y: 0 }) }}>
+            <input aria-label="First concept name" placeholder="Your first concept" maxLength={80}
+              value={newName} onChange={event => setNewName(event.target.value)} />
+            <button className="primary" disabled={!newName.trim()}>Add first concept</button>
+          </form>
+          <button onClick={() => setAdding([])}>Add material</button></div>}
 
       {/* The key to the line styles stays out of the way until asked for. */}
       <button className="key-button" aria-label="What the lines and colors mean" aria-expanded={showKey}
@@ -256,6 +262,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       {showKey && <div className="legend" role="note">
         <span><i className="line arrow" />Arrow: learn this first, then that</span>
         <span><i className="line dashed" />Dashed: new, waiting for your review</span>
+        <span>2 quotes: a connection across your notes</span>
         <span><i className="line dotted" />Dotted: you added it, not in your sources</span>
         <span><i className="swatch need" />Need to know for your goal</span>
         <span>Bigger = more concepts rely on it</span>
@@ -335,7 +342,7 @@ function AddDialog(props: {
     props.close()
   }
 
-  return <div className="modal" role="dialog" aria-modal="true" aria-label="Add material" onClick={event => {
+  return <div className="modal" role="dialog" aria-modal="true" aria-label="Add concepts or material" onClick={event => {
     if (event.target === event.currentTarget) props.close()
   }}>
     <div className="sheet">

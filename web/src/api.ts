@@ -43,6 +43,7 @@ export type Concept = {
 
 /** `from` relies on `to`: `from` is the dependent, `to` is the prerequisite. */
 export type Edge = {
+  evidence_kind?: 'stated' | 'linked'
   id: string
   from: string
   to: string
@@ -54,6 +55,8 @@ export type Edge = {
 
 /** One AI proposal (or one thing the student added). The unit of review and undo. */
 export type Claim = {
+  evidence_kind?: 'stated' | 'linked'
+  evidence?: Evidence[]
   id: number
   batch_id: string
   kind: 'concept' | 'edge'
