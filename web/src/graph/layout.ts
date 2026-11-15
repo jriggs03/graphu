@@ -78,6 +78,32 @@ export function layout(
       force.get(to)!.x -= dx / distance * pull
       force.get(to)!.y -= dy / distance * pull
     }
+    // Keep nodes off links they are not part of, so a link never runs through a label.
+    for (const [from, to] of present) {
+      const p = pos.get(from)!
+      const q = pos.get(to)!
+      const dx = q.x - p.x
+      const dy = q.y - p.y
+      const lengthSq = dx * dx + dy * dy || 1
+      for (const id of ids) {
+        if (id === from || id === to) continue
+        const point = pos.get(id)!
+        const along = ((point.x - p.x) * dx + (point.y - p.y) * dy) / lengthSq
+        if (along <= 0.05 || along >= 0.95) continue
+        const offX = point.x - (p.x + dx * along) || 0.01
+        const offY = point.y - (p.y + dy * along) || 0.01
+        const off = Math.hypot(offX, offY)
+        const room = radius.get(id)! + 26
+        if (off >= room) continue
+        const shove = (room - off) * 0.5
+        force.get(id)!.x += offX / off * shove
+        force.get(id)!.y += offY / off * shove
+        for (const end of [from, to]) {
+          force.get(end)!.x -= offX / off * shove * 0.5
+          force.get(end)!.y -= offY / off * shove * 0.5
+        }
+      }
+    }
     for (const id of ids) {
       if (fixed.has(id)) continue
       const point = pos.get(id)!

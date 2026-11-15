@@ -64,7 +64,8 @@ export function GraphView(props: Props) {
     const left = Math.min(...placed.map(node => positions[node.id].x - node.r))
     const right = Math.max(...placed.map(node => positions[node.id].x + node.r))
     const top = Math.min(...placed.map(node => positions[node.id].y - node.r - 18))
-    const bottom = Math.max(...placed.map(node => positions[node.id].y + node.r))
+    // Extra room at the bottom keeps nodes clear of the zoom buttons.
+    const bottom = Math.max(...placed.map(node => positions[node.id].y + node.r + 30))
     const k = Math.min((size.w - 48) / (right - left), (size.h - 48) / (bottom - top), 1.5)
     setView({ k, x: size.w / 2 - (left + right) / 2 * k, y: size.h / 2 - (top + bottom) / 2 * k })
     return true
@@ -78,8 +79,10 @@ export function GraphView(props: Props) {
   }, [])
 
   useEffect(() => {
-    if (fitted.current !== fitKey && fit()) fitted.current = fitKey
-  }, [fitKey, fit])
+    // Fit when a notebook opens, and again whenever the space for the map changes size.
+    const key = `${fitKey}:${size.w}x${size.h}`
+    if (fitted.current !== key && fit()) fitted.current = key
+  }, [fitKey, fit, size])
 
   const zoom = useCallback((factor: number, cx: number, cy: number) => {
     setView(prior => {
@@ -144,9 +147,11 @@ export function GraphView(props: Props) {
     const edge = edges.find(item => item.id === selected.id)
     if (edge) related.add(edge.from).add(edge.to)
   }
+  // New suggestions stay visible even while a goal dims everything off the path.
+  const pendingIds = new Set(nodes.filter(node => node.pending).map(node => node.id))
   const dimNode = (id: string) => matches ? !matches.has(id)
     : selected ? !related.has(id) && !need.has(id)
-      : need.size ? !need.has(id) : false
+      : need.size ? !need.has(id) && !pendingIds.has(id) : false
 
   const radius = new Map(nodes.map(node => [node.id, node.r]))
 
@@ -178,7 +183,7 @@ export function GraphView(props: Props) {
           const incident = selected?.kind === 'concept' && (edge.from === selected.id || edge.to === selected.id)
           const onPath = !edge.pending && need.has(edge.from) && need.has(edge.to)
           const dim = matches ? !(matches.has(edge.from) && matches.has(edge.to))
-            : selected ? !isSelected && !incident && !onPath : need.size ? !onPath : false
+            : selected ? !isSelected && !incident && !onPath : need.size ? !onPath && !edge.pending : false
           const classes = ['edge', isSelected && 'sel', incident && 'inc', edge.pending && 'pending',
             edge.unsourced && 'unsourced', dim && 'dim'].filter(Boolean).join(' ')
           return <g key={edge.id} data-edge={edge.id} className="edge-hit">
@@ -193,9 +198,13 @@ export function GraphView(props: Props) {
           if (!point) return null
           const text = lines(node.label)
           const longest = Math.max(...text.map(line => line.length))
-          const symbolSize = node.symbol
+          let symbolSize = node.symbol
             ? Math.min(node.tier === 3 ? 24 : 19, 1.6 * node.r / (node.symbol.length * 0.62)) : 0
-          const labelSize = Math.max(8, Math.min(node.tier === 3 ? 15 : 13, 1.75 * node.r / (longest * 0.55)))
+          let labelSize = Math.max(8, Math.min(node.tier === 3 ? 15 : 13, 1.75 * node.r / (longest * 0.55)))
+          // Keep symbol plus label inside the circle.
+          const squeeze = Math.min(1, 1.4 * node.r / (symbolSize + text.length * labelSize * 1.15))
+          symbolSize *= squeeze
+          labelSize *= squeeze
           const block = symbolSize + text.length * labelSize * 1.15
           const top = -block / 2
           const classes = ['node', `tier${node.tier}`,
