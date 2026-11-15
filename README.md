@@ -14,7 +14,19 @@ Graphu is moving from the Python scaffold to Rust. Three pieces exist today:
 
 The frontend picks its backend when it loads. If `/api/info` answers, it uses the server. If not (for example on a static host), it falls back to a built-in sample that lives in the browser's localStorage.
 
-Reading uploaded files with the Claude API is the next step. Until then an upload is hashed, recorded as a batch, and reported as not read. Duplicate files are blocked.
+### What you can add
+
+Uploads go through `crates/graphu-ingest`, then the grounding check, then your review queue.
+
+| You add | How its text is obtained |
+|---|---|
+| PDF with selectable text, `.txt`, `.md`, PowerPoint (`.pptx`), Word (`.docx`) | Read on the server, no AI needed for this step |
+| Photo of handwriting or a whiteboard (JPEG, PNG, GIF, WebP, up to 5 MB), scanned PDF (up to 30 pages) | Transcribed by Claude |
+| Voice note (MP3, M4A, WAV and similar) | Transcribed by the command in `GRAPHU_TRANSCRIBE_CMD` |
+
+Claude then proposes concepts and links from that text, each with a page and an exact quote. A proposal whose quote is not on the cited page is dropped. For photos, scans and audio the quote is checked against the transcription, and the batch says so.
+
+Without `ANTHROPIC_API_KEY` the server still runs: the sample works, and uploads are recorded with a note saying they were not read. HEIC photos are not supported; export them as JPEG or PNG. Limits: 25 MB per file, 100 pages, 300,000 characters. A duplicate file is blocked by its content hash and costs no AI call.
 
 ### Run the Rust server
 
@@ -26,13 +38,16 @@ npm --prefix web run build
 cargo run -p graphu-server
 ```
 
-Open http://127.0.0.1:8000. The sample graphbooks load with no API key. Settings, all optional:
+Open http://127.0.0.1:8000. The sample graphbooks load with no API key. To read your own files, start it with a key: `ANTHROPIC_API_KEY=your-key cargo run -p graphu-server`. Settings, all optional:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `GRAPHU_DB` | `data/graphu-rs.sqlite3` | Where the SQLite file lives. It must not be the Python backend's file. |
 | `GRAPHU_WEB` | `web/dist` | Folder with the built frontend. |
 | `GRAPHU_ADDR` | `127.0.0.1:8000` | Address to listen on. Use `0.0.0.0:8000` inside a container. |
+| `ANTHROPIC_API_KEY` | not set | Lets Graphu read uploads with Claude. It stays on the server and never reaches the browser. |
+| `GRAPHU_MODEL` | `claude-sonnet-5-5` | Claude model used for transcription and extraction. |
+| `GRAPHU_TRANSCRIBE_CMD` | not set | Shell command for voice notes. It receives the audio file path as `$1` and prints the transcript. |
 
 The server keeps one shared workspace and has no sign-in, the same as the Python scaffold.
 
@@ -44,7 +59,7 @@ For frontend development run the server, then `npm --prefix web run dev` and ope
 cargo test --workspace
 ```
 
-The Python backend below still works and still passes its tests. It is the safety net until the Rust server can read PDFs.
+The Python backend below still works and still passes its tests. It is the safety net until the Rust server has been tried on real lecture files with a real key.
 
 ## Run the Python scaffold locally
 
