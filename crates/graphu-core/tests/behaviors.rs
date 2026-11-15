@@ -311,3 +311,15 @@ fn a_graphbook_can_be_renamed_and_deleted() {
 
     assert_eq!(graphu.delete_notebook(CALC).unwrap_err().status(), 409, "samples stay");
 }
+
+#[test]
+fn the_student_can_choose_a_concepts_symbol() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let symbol = |n: &Notebook| n.concepts.iter().find(|c| c.id == "gradient").unwrap().symbol.clone();
+    assert_eq!(symbol(&graphu.get_notebook(CALC).unwrap()), "∇f");
+    assert_eq!(symbol(&graphu.set_symbol(CALC, "gradient", "  grad ").unwrap()), "grad");
+    assert_eq!(symbol(&graphu.set_symbol(CALC, "gradient", "").unwrap()), "∇f", "empty goes back to the proposed symbol");
+    assert_eq!(graphu.set_symbol(CALC, "gradient", "far too long a symbol").unwrap_err().status(), 422);
+    assert_eq!(graphu.set_symbol(CALC, "nope", "x").unwrap_err().status(), 404);
+}

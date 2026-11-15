@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS visuals (
     svg TEXT NOT NULL, caption TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
 );
+CREATE TABLE IF NOT EXISTS symbols (
+    notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, symbol TEXT NOT NULL,
+    PRIMARY KEY (notebook_id, concept_id)
+);
 CREATE TABLE IF NOT EXISTS comments (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, text TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
@@ -140,7 +144,7 @@ impl Graphu {
         }
         let tx = self.conn.transaction()?;
         require_notebook(&tx, id)?;
-        for table in ["visuals", "comments", "claims", "pages", "sources", "batches"] {
+        for table in ["symbols", "visuals", "comments", "claims", "pages", "sources", "batches"] {
             tx.execute(&format!("DELETE FROM {table} WHERE notebook_id = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
@@ -336,6 +340,26 @@ impl Graphu {
         tx.execute("DELETE FROM comments WHERE notebook_id = ?1 AND concept_id = ?2", params![notebook, concept])?;
         if !text.is_empty() {
             tx.execute("INSERT INTO comments VALUES (?1, ?2, ?3)", params![notebook, concept, text])?;
+        }
+        touch(&tx, notebook)?;
+        tx.commit()?;
+        self.get_notebook(notebook)
+    }
+
+    /// Set the short symbol drawn inside a concept's node. The student's choice wins over
+    /// whatever the AI proposed. An empty symbol goes back to the proposed one.
+    pub fn set_symbol(&mut self, notebook: &str, concept: &str, symbol: &str) -> Result<Notebook> {
+        let symbol = normalize(symbol);
+        if symbol.chars().count() > 12 {
+            return Err(Error::Invalid("Keep the symbol to 12 characters or fewer.".into()));
+        }
+        let tx = self.conn.transaction()?;
+        if !view(&tx, notebook)?.concepts.iter().any(|item| item.id == concept) {
+            return Err(Error::NotFound("Concept not found.".into()));
+        }
+        tx.execute("DELETE FROM symbols WHERE notebook_id = ?1 AND concept_id = ?2", params![notebook, concept])?;
+        if !symbol.is_empty() {
+            tx.execute("INSERT INTO symbols VALUES (?1, ?2, ?3)", params![notebook, concept, symbol])?;
         }
         touch(&tx, notebook)?;
         tx.commit()?;
@@ -623,8 +647,14 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             concept.evidence.push(evidence_of(claim));
         }
     }
+    let mut statement = conn.prepare("SELECT concept_id, symbol FROM symbols WHERE notebook_id = ?1")?;
+    let chosen: HashMap<String, String> =
+        statement.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
     for concept in &mut concepts {
         concept.user_added = unsourced(concept.status, &concept.evidence);
+        if let Some(symbol) = chosen.get(&concept.id) {
+            concept.symbol = symbol.clone();
+        }
     }
     let approved = |key: &str| at.get(key).is_some_and(|&index| concepts[index].status == Status::Approved);
 

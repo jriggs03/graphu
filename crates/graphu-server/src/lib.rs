@@ -207,6 +207,7 @@ pub fn app_with_users(graphu: Graphu, web: Option<PathBuf>, settings: Settings, 
         .route("/notebooks/{id}/edges", post(add_edge))
         .route("/notebooks/{id}/comment", put(set_comment))
         .route("/notebooks/{id}/target", put(set_target))
+        .route("/notebooks/{id}/symbol", put(set_symbol))
         .route("/notebooks/{id}/visual", post(draw_visual))
         .fallback(|| async { Failure(StatusCode::NOT_FOUND, "No such API route.".into()) })
         .layer(DefaultBodyLimit::max(MAX_BYTES))
@@ -318,6 +319,16 @@ async fn add_edge(Workspace(space): Workspace, Path(id): Path<String>, Json(body
 
 async fn set_comment(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Comment>) -> Reply<Notebook> {
     run(&space, |graphu| graphu.set_comment(&id, &body.concept, &body.text))
+}
+
+#[derive(Deserialize)]
+struct Symbol {
+    concept: String,
+    symbol: String,
+}
+
+async fn set_symbol(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Symbol>) -> Reply<Notebook> {
+    run(&space, |graphu| graphu.set_symbol(&id, &body.concept, &body.symbol))
 }
 
 async fn set_target(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Target>) -> Reply<Notebook> {
