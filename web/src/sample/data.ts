@@ -12,6 +12,10 @@ export type Candidate = {
   page: number
   quote: string
   symbol?: string
+  /** One plain sentence saying what the concept does. Shown tagged "AI summary". */
+  heading?: string
+  /** A formula copied from the cited page. Dropped by grounding if it is not there. */
+  snippet?: string
 }
 
 export type SampleDoc = {
@@ -25,8 +29,8 @@ export type SampleDoc = {
   status: 'approved' | 'pending'
 }
 
-const concept = (title: string, symbol: string, page: number, quote: string): Candidate =>
-  ({ title, target: '', relation: '', page, quote, symbol })
+const concept = (title: string, symbol: string, page: number, quote: string, heading = '', snippet = ''): Candidate =>
+  ({ title, target: '', relation: '', page, quote, symbol, heading, snippet })
 const link = (title: string, target: string, page: number, quote: string, relation = 'relies on'): Candidate =>
   ({ title, target, relation, page, quote })
 
@@ -42,14 +46,19 @@ const review: SampleDoc = {
     'The fundamental theorem of calculus states that the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f. It connects the derivative and the integral as inverse operations. Evaluating an integral this way requires knowing how to differentiate, since you must recognize F from its derivative.',
   ],
   items: [
-    concept('Derivatives', 'd/dx', 1, 'The derivative of f at x measures the instantaneous rate of change of f.'),
-    concept('Optimization', 'max', 1, 'set the derivative equal to zero and check the critical points'),
+    concept('Derivatives', 'd/dx', 1, 'The derivative of f at x measures the instantaneous rate of change of f.',
+      'The derivative measures how fast a function is changing at one point.', '(f(x+h) − f(x)) / h'),
+    concept('Optimization', 'max', 1, 'set the derivative equal to zero and check the critical points',
+      'Optimization finds where a function is largest or smallest.'),
     link('Optimization', 'Derivatives', 1, 'set the derivative equal to zero and check the critical points'),
-    concept('Riemann sums', 'Σ', 2, 'A Riemann sum approximates the area under a curve by adding the areas of thin rectangles.'),
-    concept('Integrals', '∫', 2, 'The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.'),
+    concept('Riemann sums', 'Σ', 2, 'A Riemann sum approximates the area under a curve by adding the areas of thin rectangles.',
+      'A Riemann sum estimates an area by adding up thin rectangles.'),
+    concept('Integrals', '∫', 2, 'The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.',
+      'The integral is the exact area you get as the rectangles become infinitely thin.'),
     link('Integrals', 'Riemann sums', 2, 'The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.', 'is the limit of'),
     link('Integrals', 'Derivatives', 3, 'Evaluating an integral this way requires knowing how to differentiate'),
-    concept('Fundamental theorem', 'FTC', 3, 'the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f'),
+    concept('Fundamental theorem', 'FTC', 3, 'the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f',
+      'The fundamental theorem turns an integral into a subtraction of two antiderivative values.', 'F(b) − F(a)'),
     link('Fundamental theorem', 'Integrals', 3, 'the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f'),
     link('Fundamental theorem', 'Derivatives', 3, 'It connects the derivative and the integral as inverse operations.', 'connects'),
   ],
@@ -67,13 +76,17 @@ const week6: SampleDoc = {
     'A double integral adds up a function over a region in the plane. It is evaluated as an iterated integral: integrate with respect to one variable, then the other. A triple integral extends the double integral to a solid region in space.',
   ],
   items: [
-    concept('Partial derivatives', '∂', 1, 'A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant.'),
+    concept('Partial derivatives', '∂', 1, 'A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant.',
+      'A partial derivative changes one variable and holds the others still.'),
     link('Partial derivatives', 'Derivatives', 1, 'Computing a partial derivative uses the same rules as the ordinary derivative.'),
-    concept('Gradient', '∇f', 2, 'The gradient of f is the vector of its partial derivatives.'),
+    concept('Gradient', '∇f', 2, 'The gradient of f is the vector of its partial derivatives.',
+      'The gradient points in the direction where the function rises fastest.'),
     link('Gradient', 'Partial derivatives', 2, 'The gradient of f is the vector of its partial derivatives.', 'is built from'),
-    concept('Double integrals', '∬', 3, 'A double integral adds up a function over a region in the plane.'),
+    concept('Double integrals', '∬', 3, 'A double integral adds up a function over a region in the plane.',
+      'A double integral adds up a function over a region of the plane.'),
     link('Double integrals', 'Integrals', 3, 'It is evaluated as an iterated integral: integrate with respect to one variable, then the other.'),
-    concept('Triple integrals', '∭', 3, 'A triple integral extends the double integral to a solid region in space.'),
+    concept('Triple integrals', '∭', 3, 'A triple integral extends the double integral to a solid region in space.',
+      'A triple integral adds up a function over a solid region.'),
     link('Triple integrals', 'Double integrals', 3, 'A triple integral extends the double integral to a solid region in space.', 'extends'),
   ],
 }
@@ -90,14 +103,18 @@ const week9: SampleDoc = {
     "Green's theorem states that the line integral of F around a closed curve C equals the double integral of ∂Q/∂x − ∂P/∂y over the region D enclosed by C. Using Green's theorem, a difficult line integral can be traded for a double integral over the enclosed region.",
   ],
   items: [
-    concept('Vector fields', 'F', 1, 'A vector field assigns a vector to every point in the plane or in space.'),
-    concept('Divergence', '∇·F', 1, 'It measures how much the field spreads out from a point.'),
+    concept('Vector fields', 'F', 1, 'A vector field assigns a vector to every point in the plane or in space.',
+      'A vector field attaches an arrow to every point.'),
+    concept('Divergence', '∇·F', 1, 'It measures how much the field spreads out from a point.',
+      'Divergence measures how much a field spreads out from a point.', '∂P/∂x + ∂Q/∂y'),
     link('Divergence', 'Vector fields', 1, 'The divergence of a vector field F = (P, Q) is the sum of partial derivatives'),
     link('Divergence', 'Partial derivatives', 1, 'The divergence of a vector field F = (P, Q) is the sum of partial derivatives', 'is a sum of'),
-    concept('Line integrals', '∮', 2, 'A line integral adds up a vector field along a curve.'),
+    concept('Line integrals', '∮', 2, 'A line integral adds up a vector field along a curve.',
+      'A line integral adds up a field along a curve.'),
     link('Line integrals', 'Vector fields', 2, 'A line integral adds up a vector field along a curve.'),
     link('Line integrals', 'Integrals', 2, 'evaluating an ordinary integral in the parameter t'),
-    concept("Green's theorem", 'Green', 3, "Green's theorem states that the line integral of F around a closed curve C equals the double integral of"),
+    concept("Green's theorem", 'Green', 3, "Green's theorem states that the line integral of F around a closed curve C equals the double integral of",
+      "Green's theorem trades a line integral around a region for a double integral over it.", '∂Q/∂x − ∂P/∂y'),
     link("Green's theorem", 'Line integrals', 3, "Green's theorem states that the line integral of F around a closed curve C equals the double integral of"),
     link("Green's theorem", 'Double integrals', 3, 'a difficult line integral can be traded for a double integral over the enclosed region'),
     // Adds evidence to a concept that is already in the graph (a proposed merge).
@@ -118,10 +135,12 @@ const officeHours: SampleDoc = {
     'So the divergence theorem is the three-dimensional version of what we did last week. It says the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside. Flux is a surface integral: you add up how much of the field passes through each little patch of the surface, and each patch is set up as a double integral over the parameters. Remember that divergence measures how much the field spreads out from a point, so the theorem is just adding up all that spreading.',
   ],
   items: [
-    concept('Surface integrals', '∯', 1, 'Flux is a surface integral: you add up how much of the field passes through each little patch of the surface'),
+    concept('Surface integrals', '∯', 1, 'Flux is a surface integral: you add up how much of the field passes through each little patch of the surface',
+      'A surface integral adds up how much of a field passes through a surface.'),
     link('Surface integrals', 'Vector fields', 1, 'you add up how much of the field passes through each little patch of the surface'),
     link('Surface integrals', 'Double integrals', 1, 'each patch is set up as a double integral over the parameters'),
-    concept('Divergence theorem', 'Gauss', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
+    concept('Divergence theorem', 'Gauss', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside',
+      'The divergence theorem turns the flow out of a closed surface into an integral over the solid inside.'),
     link('Divergence theorem', 'Surface integrals', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
     link('Divergence theorem', 'Triple integrals', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
     link('Divergence theorem', 'Divergence', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
@@ -140,9 +159,12 @@ const hashTables: SampleDoc = {
     'A hash table maps keys to buckets. A hash function determines the bucket for a key. Chaining resolves collisions in a hash table by storing several entries in one bucket.',
   ],
   items: [
-    concept('Hash table', '{ }', 1, 'A hash table maps keys to buckets.'),
-    concept('Hash function', 'h(k)', 1, 'A hash function determines the bucket for a key.'),
-    concept('Chaining', '→→', 1, 'Chaining resolves collisions in a hash table'),
+    concept('Hash table', '{ }', 1, 'A hash table maps keys to buckets.',
+      'A hash table finds a value quickly by turning its key into a bucket.'),
+    concept('Hash function', 'h(k)', 1, 'A hash function determines the bucket for a key.',
+      'A hash function decides which bucket a key goes in.'),
+    concept('Chaining', '→→', 1, 'Chaining resolves collisions in a hash table',
+      'Chaining lets one bucket hold several entries when keys collide.'),
     link('Chaining', 'Hash table', 1, 'Chaining resolves collisions in a hash table', 'resolves collisions in'),
   ],
 }

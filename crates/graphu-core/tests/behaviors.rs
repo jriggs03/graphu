@@ -398,3 +398,17 @@ fn an_older_database_gains_the_new_columns() {
     assert_eq!(graphu.get_notebook(CALC).unwrap().concepts.len(), 14);
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn the_sample_shows_headings_and_only_snippets_that_are_on_the_page() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let notebook = graphu.get_notebook(CALC).unwrap();
+    let derivatives = notebook.concepts.iter().find(|c| c.id == "derivatives").unwrap();
+    assert!(derivatives.heading.starts_with("The derivative measures"));
+    let snippet = derivatives.snippet.as_ref().unwrap();
+    assert_eq!((snippet.text.as_str(), snippet.page), ("(f(x+h) − f(x)) / h", 1));
+    let with_snippet: Vec<&str> = notebook.concepts.iter().filter(|c| c.snippet.is_some()).map(|c| c.id.as_str()).collect();
+    assert_eq!(with_snippet, ["derivatives", "fundamental theorem", "divergence", "green's theorem"]);
+    assert!(notebook.concepts.iter().find(|c| c.id == "limits").unwrap().heading.is_empty(), "the student's own concept has no AI summary");
+}
