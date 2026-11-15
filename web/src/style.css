@@ -206,11 +206,13 @@ details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
 /* ---------- small screens ---------- */
 @media (max-width: 900px) {
   body { overflow: auto; }
-  .home { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100%; }
+  .home { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; height: auto; min-height: 100%; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
   .notebooks { max-height: 180px; }
   .hero { padding: 36px 16px; }
-  .notebook { grid-template-columns: 1fr; grid-template-rows: auto 62vh auto; height: auto; min-height: 100%; }
+  .notebook { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 62vh auto; height: auto; min-height: 100%; }
+  .rail-button { width: auto; flex: 1; min-width: 0; }
+  .rail .settings { flex: 1; display: flex; }
   .rail { flex-direction: row; justify-content: space-around; padding: 4px; border-right: 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 25; }
   .rail .grow { display: none; }
   .rail .settings { padding: 0; }
