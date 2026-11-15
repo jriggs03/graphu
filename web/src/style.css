@@ -317,3 +317,13 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .row-actions button { padding: 3px 10px; font-size: 13px; }
 button.danger { color: var(--warn); border-color: var(--warn); }
 button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color: var(--warn); }
+
+/* ---------- first visit and greeting ---------- */
+.welcome { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 24px; text-align: center; }
+.welcome form { display: flex; flex-direction: column; gap: 10px; width: min(360px, 100%); }
+.welcome label { font-size: 18px; font-weight: 600; }
+.welcome input { font-size: 18px; padding: 12px 14px; border-radius: 14px; text-align: center; }
+.welcome .primary { padding: 11px; font-size: 16px; border-radius: 14px; }
+.welcome .hint { max-width: 420px; }
+.greeting { color: var(--muted); font-size: 16px; margin-bottom: -8px; }
+.popover .row input { width: 150px; padding: 5px 8px; }

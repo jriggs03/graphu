@@ -3,8 +3,10 @@ import { api } from './api'
 import type { NotebookSummary } from './api'
 import { ContextBox, Settings, describe, useFileDrop } from './ui'
 import type { Toast } from './ui'
+import { useUser } from './identity'
 
 export function Home({ notify }: { notify: (toast: Toast) => void }) {
+  const user = useUser()
   const [notebooks, setNotebooks] = useState<NotebookSummary[]>([])
   const [tab, setTab] = useState<'all' | 'review'>('all')
   const [context, setContext] = useState('')
@@ -85,6 +87,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
       <Settings onReset={refresh} />
     </aside>
     <main className="hero">
+      <p className="greeting">Hi, {user?.name}</p>
       <h1 className="wordmark"><img src="/icon-192.png" alt="" />Graphu</h1>
       <p className="tagline">Your slides, notes and voice memos become a concept map. Every concept points back to the page it came from, and nothing joins the map until you approve it.</p>
       {destination === 'new' && <input className="name-box" value={name} maxLength={80}
