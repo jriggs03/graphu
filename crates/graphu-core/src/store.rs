@@ -406,7 +406,7 @@ fn add_sample(conn: &Connection, notebook: &str, doc: &SampleDoc, created_at: Op
 fn add_doc(conn: &Connection, notebook: &str, kind: &str, source_id: &str, name: &str, context: &str, note: &str,
     pages: &[String], items: &[Candidate], created_at: Option<&str>) -> Result<AddResult> {
     if exists(conn, "SELECT 1 FROM sources WHERE notebook_id = ?1 AND id = ?2", params![notebook, source_id])? {
-        return Ok(AddResult { name: name.into(), batch_id: None, duplicate: true, count: 0, dropped: 0, extracted: false });
+        return Ok(AddResult { name: name.into(), batch_id: None, duplicate: true, count: 0, dropped: 0, extracted: false, note: String::new() });
     }
     let batch = new_batch(conn, notebook, kind, name, context, note, created_at)?;
     conn.execute("INSERT INTO sources VALUES (?1, ?2, ?3, ?4)", params![notebook, source_id, name, batch])?;
@@ -434,7 +434,7 @@ fn add_doc(conn: &Connection, notebook: &str, kind: &str, source_id: &str, name:
             item.symbol.as_deref().unwrap_or(""), item.page, &item.quote, Status::Pending)?;
         count += 1;
     }
-    Ok(AddResult { name: name.into(), batch_id: Some(batch.to_string()), duplicate: false, count, dropped, extracted: true })
+    Ok(AddResult { name: name.into(), batch_id: Some(batch.to_string()), duplicate: false, count, dropped, extracted: true, note: note.into() })
 }
 
 fn set_status(conn: &Connection, notebook: &str, claim: i64, status: Status) -> Result<()> {

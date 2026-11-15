@@ -13,7 +13,7 @@ use tower::ServiceExt;
 fn server(web: Option<PathBuf>) -> Router {
     let mut graphu = Graphu::in_memory().unwrap();
     graphu.ensure_samples().unwrap();
-    graphu_server::app(graphu, web)
+    graphu_server::app(graphu, web, graphu_ingest::Settings::offline())
 }
 
 /// Send one request and return the status, the content type, and the body.
@@ -93,13 +93,20 @@ async fn notebooks_uploads_and_errors() {
     let base = format!("/api/notebooks/{}", created["id"].as_str().unwrap());
 
     // The same bytes twice: the second upload is a duplicate, whatever it is called.
-    let path = format!("{base}/documents?name=Lecture.pdf&context=week%206%20slides");
-    let (status, first) = upload(&app, &path, b"%PDF-1.4 lecture".to_vec()).await;
+    let path = format!("{base}/documents?name=Lecture.txt&context=week%206%20slides");
+    let (status, first) = upload(&app, &path, b"Lecture notes about caches.".to_vec()).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(first["results"][0]["duplicate"], false);
     assert_eq!(first["results"][0]["extracted"], false);
+    assert!(first["results"][0]["note"].as_str().unwrap().contains("No AI key"), "recorded, with the reason");
+    assert_eq!(first["notebook"]["sources"][0]["pages"][0], "Lecture notes about caches.");
+
+    // A broken PDF is refused with a message instead of being stored.
+    let (status, error) = upload(&app, &format!("{base}/documents?name=Bad.pdf"), b"%PDF-1.4 not really".to_vec()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(error["detail"].as_str().unwrap().contains("could not be read"));
     assert_eq!(first["notebook"]["batches"][0]["context"], "week 6 slides");
-    let (_, second) = upload(&app, &format!("{base}/documents?name=Renamed.pdf"), b"%PDF-1.4 lecture".to_vec()).await;
+    let (_, second) = upload(&app, &format!("{base}/documents?name=Renamed.txt"), b"Lecture notes about caches.".to_vec()).await;
     assert_eq!(second["results"][0]["duplicate"], true);
 
     assert_eq!(upload(&app, &path, Vec::new()).await.0, StatusCode::UNPROCESSABLE_ENTITY);
@@ -154,4 +161,50 @@ async fn built_pwa_is_served() {
     assert_eq!(send(&app, Method::GET, "/sw.js", None).await.0, StatusCode::OK);
     // The API still answers when the frontend is being served too.
     assert_eq!(send(&app, Method::GET, "/api/info", None).await.0, StatusCode::OK);
+}
+
+/// The whole upload path with a fake Claude: read → propose → ground → review queue.
+#[tokio::test]
+async fn upload_is_read_proposed_and_grounded() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    let claude = Router::new().route("/v1/messages", axum::routing::post(|| async {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        let items = json!({ "items": [
+            { "title": "Cache", "target": "", "relation": "", "symbol": "", "page": 1, "quote": "A cache keeps frequently used data close." },
+            { "title": "Locality", "target": "", "relation": "", "symbol": "", "page": 1, "quote": "Caches work because programs show locality." },
+            { "title": "Cache", "target": "Locality", "relation": "relies on", "symbol": "", "page": 1, "quote": "Caches work because programs show locality." },
+            { "title": "Invented", "target": "", "relation": "", "symbol": "", "page": 1, "quote": "This sentence is not in the notes at all." },
+        ] });
+        axum::Json(json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": items.to_string() }] }))
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, claude).await.unwrap() });
+    let settings = graphu_ingest::Settings { api_key: Some("test".into()), model: "claude-sonnet-5-5".into(), base_url, transcribe_cmd: None };
+    let app = graphu_server::app(Graphu::in_memory().unwrap(), None, settings);
+
+    assert_eq!(call(&app, Method::GET, "/api/info", None).await.1["ai_enabled"], true);
+    let (_, created) = call(&app, Method::POST, "/api/notebooks", Some(json!({ "title": "Systems" }))).await;
+    let base = format!("/api/notebooks/{}", created["id"].as_str().unwrap());
+    let notes = b"A cache keeps frequently used data close.\nCaches work because programs show locality.".to_vec();
+
+    let (status, added) = upload(&app, &format!("{base}/documents?name=week4.txt&context=week%204"), notes.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    let result = &added["results"][0];
+    assert_eq!((result["extracted"].as_bool(), result["count"].as_i64(), result["dropped"].as_i64()), (Some(true), Some(3), Some(1)));
+    let claims = added["notebook"]["claims"].as_array().unwrap();
+    assert!(claims.iter().all(|claim| claim["status"] == "pending" && claim["source"] == "week4.txt"));
+    assert!(!claims.iter().any(|claim| claim["title"] == "Invented"), "its quote is not on the page");
+    assert_eq!(added["notebook"]["sources"][0]["pages"].as_array().unwrap().len(), 1);
+
+    // The same file again: a duplicate, and Claude is not asked a second time.
+    let (_, again) = upload(&app, &format!("{base}/documents?name=copy.txt"), notes).await;
+    assert_eq!(again["results"][0]["duplicate"], true);
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+
+    // A file that cannot be used comes back as a message, not a batch.
+    let (status, error) = upload(&app, &format!("{base}/documents?name=data.bin"), vec![0, 1, 2]).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(error["detail"].as_str().unwrap().contains("cannot read this kind of file"));
 }

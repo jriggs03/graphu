@@ -6,6 +6,7 @@ description = "HTTP API for Graphu. A thin layer over graphu-core that also serv
 
 [dependencies]
 graphu-core = { path = "../graphu-core" }
+graphu-ingest = { path = "../graphu-ingest" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { version = "0.6", features = ["fs"] }

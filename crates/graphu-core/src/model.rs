@@ -163,6 +163,8 @@ pub struct AddResult {
     pub dropped: usize,
     /// False when the document could not be read (for example, no AI key on the server).
     pub extracted: bool,
+    /// Why nothing was read, or how the text was obtained (for example, an AI transcription).
+    pub note: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

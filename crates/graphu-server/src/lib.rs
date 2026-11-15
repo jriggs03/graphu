@@ -3,6 +3,8 @@
 //!
 //! ```text
 //!  browser ──HTTP──▶ route (this file) ──▶ graphu-core ──▶ SQLite
+//!                         │
+//!                         └─ uploads go through graphu-ingest first (read the file, ask Claude)
 //! ```
 
 use std::path::PathBuf;
@@ -15,14 +17,21 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use graphu_core::{sha256_hex, AddResult, Graphu, NewDocument, Notebook, NotebookSummary, SamplePack, Status};
+use graphu_ingest::{IngestError, Settings};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tower_http::services::{ServeDir, ServeFile};
 
-/// Uploads larger than this are refused (same limit as the Python backend).
-pub const MAX_BYTES: usize = 8 * 1024 * 1024;
+/// Uploads larger than this are refused.
+pub const MAX_BYTES: usize = graphu_ingest::MAX_BYTES;
 
-type Shared = Arc<Mutex<Graphu>>;
+pub struct AppState {
+    graphu: Mutex<Graphu>,
+    /// Where the AI lives (key, model). Fixed when the server starts.
+    settings: Settings,
+}
+
+type Shared = Arc<AppState>;
 
 /// An error the browser can show: `{"detail": "..."}` with a matching HTTP status.
 struct Failure(StatusCode, String);
@@ -44,7 +53,7 @@ type Reply<T> = Result<Json<T>, Failure>;
 
 /// Lock the workspace, run one core call, and turn the result into a JSON reply.
 fn run<T>(state: &Shared, call: impl FnOnce(&mut Graphu) -> graphu_core::Result<T>) -> Reply<T> {
-    let mut graphu = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut graphu = state.graphu.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     Ok(Json(call(&mut graphu)?))
 }
 
@@ -104,7 +113,7 @@ struct Target {
 }
 
 /// Build the whole application. `web` is the folder holding the built frontend, if any.
-pub fn app(graphu: Graphu, web: Option<PathBuf>) -> Router {
+pub fn app(graphu: Graphu, web: Option<PathBuf>, settings: Settings) -> Router {
     let api = Router::new()
         .route("/info", get(info))
         .route("/notebooks", get(list_notebooks).post(create_notebook))
@@ -121,7 +130,7 @@ pub fn app(graphu: Graphu, web: Option<PathBuf>) -> Router {
         .route("/notebooks/{id}/target", put(set_target))
         .fallback(|| async { Failure(StatusCode::NOT_FOUND, "No such API route.".into()) })
         .layer(DefaultBodyLimit::max(MAX_BYTES))
-        .with_state(Arc::new(Mutex::new(graphu)));
+        .with_state(Arc::new(AppState { graphu: Mutex::new(graphu), settings }));
     let router = Router::new().nest("/api", api);
     match web {
         // Any path that is not a file gets index.html, so the single-page app can load.
@@ -130,9 +139,8 @@ pub fn app(graphu: Graphu, web: Option<PathBuf>) -> Router {
     }
 }
 
-async fn info() -> Json<Info> {
-    // Reading files with Claude arrives in step 4. Until then uploads are recorded, not read.
-    Json(Info { mode: "server", ai_enabled: false })
+async fn info(State(state): State<Shared>) -> Json<Info> {
+    Json(Info { mode: "server", ai_enabled: state.settings.api_key.is_some() })
 }
 
 async fn list_notebooks(State(state): State<Shared>) -> Reply<Vec<NotebookSummary>> {
@@ -147,20 +155,37 @@ async fn get_notebook(State(state): State<Shared>, Path(id): Path<String>) -> Re
     run(&state, |graphu| graphu.get_notebook(&id))
 }
 
-/// The request body is the raw file. Its SHA-256 identifies it, so the same file is stored once.
+/// The request body is the raw file, of any kind.
+///
+/// 1. Hash it. The same bytes twice is a duplicate and costs no AI call.
+/// 2. Read it and ask Claude for proposals (graphu-ingest). The workspace is not locked meanwhile.
+/// 3. Store it as a new batch (graphu-core), which keeps only proposals whose quote is on the page.
 async fn add_document(State(state): State<Shared>, Path(id): Path<String>, Query(upload): Query<Upload>, body: Bytes) -> Reply<Added> {
     if body.is_empty() {
         return Err(Failure(StatusCode::UNPROCESSABLE_ENTITY, "That file is empty.".into()));
     }
-    let document = NewDocument {
+    let mut document = NewDocument {
         source_id: sha256_hex(&body),
         name: upload.name.unwrap_or_default(),
         context: upload.context.unwrap_or_default(),
-        pages: Vec::new(),
-        items: Vec::new(),
-        extracted: false,
-        note: "AI extraction is not connected yet, so nothing was read from this file.".into(),
+        ..NewDocument::default()
     };
+    let Json((duplicate, known)) = run(&state, |graphu| {
+        let notebook = graphu.get_notebook(&id)?;
+        let known: Vec<String> = notebook.concepts.into_iter().map(|concept| concept.label).collect();
+        Ok((graphu.has_source(&id, &document.source_id)?, known))
+    })?;
+    if !duplicate {
+        let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &body).await
+            .map_err(|error| match error {
+                IngestError::Unreadable(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
+                IngestError::Ai(text) => Failure(StatusCode::BAD_GATEWAY, text),
+            })?;
+        document.pages = ingested.pages;
+        document.items = ingested.items;
+        document.extracted = ingested.extracted;
+        document.note = ingested.note;
+    }
     run(&state, |graphu| {
         let result = graphu.add_document(&id, document)?;
         Ok(Added { notebook: graphu.get_notebook(&id)?, results: vec![result] })
