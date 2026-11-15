@@ -213,23 +213,66 @@ details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
 .lost { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); }
 
 /* ---------- small screens ---------- */
+.sheet-close { display: none; }
+
 @media (max-width: 900px) {
   body { overflow: auto; }
+  /* iOS zooms the page when a focused field's text is under 16px. */
+  input, textarea, select { font-size: 16px; }
+
+  /* Home: the list sits above the hero and stays short. */
   .home { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; height: auto; min-height: 100%; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
-  .notebooks { max-height: 180px; }
-  .hero { padding: 36px 16px; }
-  .notebook { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 62vh auto; height: auto; min-height: 100%; }
-  .rail-button { width: auto; flex: 1; min-width: 0; }
-  .rail .settings { flex: 1; display: flex; }
-  .rail { flex-direction: row; justify-content: space-around; padding: 4px; border-right: 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 25; }
-  .rail .grow { display: none; }
-  .rail .settings { padding: 0; }
-  .rail .popover { left: auto; right: 0; bottom: auto; top: calc(100% + 6px); }
-  .stage-head { flex-wrap: wrap; padding: 10px 14px 4px; }
+  .notebooks { max-height: 190px; }
+  .hero { padding: 28px 16px 40px; justify-content: flex-start; }
+  .context-row .grow { display: none; }
+  .context-row select { flex: 1; min-width: 0; }
+  .context-row .primary { flex-basis: 100%; padding: 11px; }
+  .sidebar .popover { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; }
+
+  /* Notebook: the map fills the screen, tools sit in a bar at the bottom,
+     and the panel slides up over the map as a sheet. */
+  .notebook { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  .stage { flex: 1; }
+  .stage-head { flex-wrap: wrap; gap: 8px; padding: 10px 12px 4px; }
+  .stage-head h1 { font-size: 18px; flex-basis: 100%; }
   .search { max-width: none; flex-basis: 100%; margin: 0; }
-  .goal, .legend { padding-left: 14px; padding-right: 14px; }
-  .side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .search input { padding: 7px 10px; }
+  .goal { flex-wrap: nowrap; overflow-x: auto; padding: 4px 12px 6px; scrollbar-width: none; }
+  .goal label { flex-shrink: 0; }
+  .route { flex-wrap: nowrap; white-space: nowrap; }
+  .route li { flex-shrink: 0; }
+  .legend { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; padding: 6px 12px; scrollbar-width: none; }
+  .legend span { flex-shrink: 0; }
+  .linking { margin: 0 12px 6px; }
+  .zoom { right: 10px; bottom: 10px; }
+  .zoom button { min-width: 44px; min-height: 40px; }
+
+  .rail { order: 3; flex-direction: row; justify-content: space-around; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    border-right: 0; border-top: 1px solid var(--line); z-index: 30; }
+  .rail .grow { display: none; }
+  .rail-button { width: auto; flex: 1; min-width: 0; padding: 6px 0; }
+  .rail .settings { flex: 1; display: flex; padding: 0; position: static; }
+  .rail .popover { position: fixed; left: 12px; right: 12px; top: auto; bottom: calc(66px + env(safe-area-inset-bottom)); width: auto; max-height: 70dvh; }
+
+  .side { position: fixed; left: 0; right: 0; bottom: calc(58px + env(safe-area-inset-bottom)); height: 46dvh; z-index: 26;
+    border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; overflow: auto;
+    box-shadow: 0 -10px 30px rgba(20, 15, 10, .22); }
+  .side.idle { display: none; }
+  /* While the sheet is up, the map shrinks to the space above it, so the selected node stays in view. */
+  .notebook:has(.side:not(.idle)) .stage { margin-bottom: 46dvh; }
+  .notebook:has(.side:not(.idle)) .legend { display: none; }
+  .sheet-close { display: block; position: sticky; top: 0; margin: 6px 8px -34px auto; z-index: 2; width: 36px; height: 36px;
+    padding: 0; border-radius: 50%; font-size: 20px; line-height: 1; background: var(--panel); }
+  .detail { padding: 16px 16px 24px; }
+  .detail h2 { padding-right: 40px; font-size: 20px; }
+  .where { padding-right: 40px; }
+
+  .toast-slot { bottom: calc(70px + env(safe-area-inset-bottom)); }
+  .toast { font-size: 13.5px; }
+  .modal { align-items: flex-end; padding: 0; }
+  .sheet { border-radius: 20px 20px 0 0; max-height: 92dvh; width: 100%; }
+  .menu { width: min(250px, calc(100vw - 20px)); }
 }
 
 /* ---------- arrows and legend lines ---------- */

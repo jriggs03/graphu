@@ -68,6 +68,17 @@ export function GraphView(props: Props) {
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 })
   const fitted = useRef('')
+  // Touch: every finger on the map, and the two-finger pinch in progress, if any.
+  const fingers = useRef(new Map<number, Point>())
+  const pinch = useRef<{ distance: number; middle: Point; origin: View } | null>(null)
+  const twoFingers = () => {
+    const [a, b] = [...fingers.current.values()]
+    const box = wrap.current!.getBoundingClientRect()
+    return {
+      distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      middle: { x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top },
+    }
+  }
 
   const fit = useCallback(() => {
     const placed = nodes.filter(node => positions[node.id])
@@ -115,6 +126,15 @@ export function GraphView(props: Props) {
 
   function down(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return
+    fingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    // Capture keeps the gesture alive when the finger leaves the map. Some pointers cannot be captured.
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* carry on without it */ }
+    if (fingers.current.size === 2) {
+      // A second finger turns whatever was happening into a pinch-zoom.
+      gesture.current = null
+      pinch.current = { ...twoFingers(), origin: view }
+      return
+    }
     const hit = event.target as Element
     const node = hit.closest('[data-node]')?.getAttribute('data-node')
     const edge = hit.closest('[data-edge]')?.getAttribute('data-edge')
@@ -122,7 +142,6 @@ export function GraphView(props: Props) {
     gesture.current = node ? { kind: 'node', id: node, origin: positions[node], ...start }
       : edge ? { kind: 'edge', id: edge, ...start }
         : { kind: 'pan', origin: view, ...start }
-    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   function menu(event: React.MouseEvent<SVGSVGElement>) {
@@ -136,6 +155,15 @@ export function GraphView(props: Props) {
   }
 
   function move(event: ReactPointerEvent<SVGSVGElement>) {
+    if (fingers.current.has(event.pointerId)) fingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pinch.current && fingers.current.size >= 2) {
+      const { origin, distance, middle } = pinch.current
+      const now = twoFingers()
+      const k = Math.min(3, Math.max(0.25, origin.k * now.distance / distance))
+      // Keep the point between the fingers under the fingers, and follow them as they move.
+      setView({ k, x: now.middle.x - (middle.x - origin.x) * k / origin.k, y: now.middle.y - (middle.y - origin.y) * k / origin.k })
+      return
+    }
     const current = gesture.current
     if (!current) return
     const dx = event.clientX - current.startX
@@ -146,7 +174,14 @@ export function GraphView(props: Props) {
     if (current.kind === 'pan') setView({ ...current.origin, x: current.origin.x + dx, y: current.origin.y + dy })
   }
 
-  function up() {
+  function up(event: ReactPointerEvent<SVGSVGElement>) {
+    fingers.current.delete(event.pointerId)
+    if (pinch.current) {
+      // Lifting a finger after a pinch must not count as a tap or start a drag.
+      if (fingers.current.size === 0) pinch.current = null
+      gesture.current = null
+      return
+    }
     const current = gesture.current
     gesture.current = null
     if (!current) return
@@ -177,7 +212,9 @@ export function GraphView(props: Props) {
   const radius = new Map(nodes.map(node => [node.id, node.r]))
 
   // The dotted or squared background moves and zooms with the map.
-  const paper = { '--gs': `${28 * view.k}px`, '--gx': `${view.x}px`, '--gy': `${view.y}px` } as React.CSSProperties
+  let spacing = 28 * view.k
+  while (spacing < 18) spacing *= 2 // zoomed far out: thin the pattern so it stays readable
+  const paper = { '--gs': `${spacing}px`, '--gx': `${view.x}px`, '--gy': `${view.y}px` } as React.CSSProperties
 
   return <div className="graph" ref={wrap} style={paper}>
     <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up}

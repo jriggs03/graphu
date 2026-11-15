@@ -38,7 +38,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   useEffect(() => {
     api.getNotebook(id).then(loaded => {
       setNotebook(loaded)
-      if (loaded.claims.some(claim => claim.status === 'pending')) setMode('review')
+      // On a phone the panel covers the map, so it only opens when asked for.
+      if (loaded.claims.some(claim => claim.status === 'pending') && !matchMedia('(max-width: 900px)').matches) setMode('review')
     }).catch(() => setMissing(true))
   }, [id])
 
@@ -257,7 +258,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
       </div>
     </section>
 
-    <aside className="side" aria-live="polite">
+    <aside className={`side${mode === 'detail' && !selected ? ' idle' : ''}`} aria-live="polite">
+      <button className="sheet-close" aria-label="Close this panel" onClick={() => { setSelected(null); setMode('detail') }}>×</button>
       {mode === 'review' ? <ReviewPanel tools={tools} />
         : mode === 'history' ? <HistoryPanel tools={tools} />
           : concept ? <ConceptPanel concept={concept} tools={tools} />
