@@ -1,0 +1,425 @@
+[
+ {
+  "id": "sample-calculus",
+  "title": "Calculus III (sample)",
+  "docs": [
+   {
+    "id": "sample-calc-review",
+    "name": "Calc I review notes.pdf",
+    "context": "review notes from the first three weeks",
+    "created_at": "2026-10-05T17:10:00Z",
+    "status": "approved",
+    "pages": [
+     "The derivative of f at x measures the instantaneous rate of change of f. It is defined as the limit of the difference quotient (f(x+h) − f(x)) / h as h approaches 0. To find where a function is largest or smallest, set the derivative equal to zero and check the critical points. This procedure is called optimization.",
+     "A Riemann sum approximates the area under a curve by adding the areas of thin rectangles. The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.",
+     "The fundamental theorem of calculus states that the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f. It connects the derivative and the integral as inverse operations. Evaluating an integral this way requires knowing how to differentiate, since you must recognize F from its derivative."
+    ],
+    "items": [
+     {
+      "title": "Derivatives",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "The derivative of f at x measures the instantaneous rate of change of f.",
+      "symbol": "d/dx"
+     },
+     {
+      "title": "Optimization",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "set the derivative equal to zero and check the critical points",
+      "symbol": "max"
+     },
+     {
+      "title": "Optimization",
+      "target": "Derivatives",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "set the derivative equal to zero and check the critical points"
+     },
+     {
+      "title": "Riemann sums",
+      "target": "",
+      "relation": "",
+      "page": 2,
+      "quote": "A Riemann sum approximates the area under a curve by adding the areas of thin rectangles.",
+      "symbol": "Σ"
+     },
+     {
+      "title": "Integrals",
+      "target": "",
+      "relation": "",
+      "page": 2,
+      "quote": "The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.",
+      "symbol": "∫"
+     },
+     {
+      "title": "Integrals",
+      "target": "Riemann sums",
+      "relation": "is the limit of",
+      "page": 2,
+      "quote": "The definite integral is the limit of Riemann sums as the rectangles become infinitely thin."
+     },
+     {
+      "title": "Integrals",
+      "target": "Derivatives",
+      "relation": "relies on",
+      "page": 3,
+      "quote": "Evaluating an integral this way requires knowing how to differentiate"
+     },
+     {
+      "title": "Fundamental theorem",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f",
+      "symbol": "FTC"
+     },
+     {
+      "title": "Fundamental theorem",
+      "target": "Integrals",
+      "relation": "relies on",
+      "page": 3,
+      "quote": "the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f"
+     },
+     {
+      "title": "Fundamental theorem",
+      "target": "Derivatives",
+      "relation": "connects",
+      "page": 3,
+      "quote": "It connects the derivative and the integral as inverse operations."
+     }
+    ]
+   },
+   {
+    "id": "sample-calc-week6",
+    "name": "Week 6 slides – Multivariable.pdf",
+    "context": "week 6 slides",
+    "created_at": "2026-10-26T18:30:00Z",
+    "status": "approved",
+    "pages": [
+     "A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant. Computing a partial derivative uses the same rules as the ordinary derivative.",
+     "The gradient of f is the vector of its partial derivatives. It points in the direction of steepest increase.",
+     "A double integral adds up a function over a region in the plane. It is evaluated as an iterated integral: integrate with respect to one variable, then the other. A triple integral extends the double integral to a solid region in space."
+    ],
+    "items": [
+     {
+      "title": "Partial derivatives",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant.",
+      "symbol": "∂"
+     },
+     {
+      "title": "Partial derivatives",
+      "target": "Derivatives",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "Computing a partial derivative uses the same rules as the ordinary derivative."
+     },
+     {
+      "title": "Gradient",
+      "target": "",
+      "relation": "",
+      "page": 2,
+      "quote": "The gradient of f is the vector of its partial derivatives.",
+      "symbol": "∇f"
+     },
+     {
+      "title": "Gradient",
+      "target": "Partial derivatives",
+      "relation": "is built from",
+      "page": 2,
+      "quote": "The gradient of f is the vector of its partial derivatives."
+     },
+     {
+      "title": "Double integrals",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "A double integral adds up a function over a region in the plane.",
+      "symbol": "∬"
+     },
+     {
+      "title": "Double integrals",
+      "target": "Integrals",
+      "relation": "relies on",
+      "page": 3,
+      "quote": "It is evaluated as an iterated integral: integrate with respect to one variable, then the other."
+     },
+     {
+      "title": "Triple integrals",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "A triple integral extends the double integral to a solid region in space.",
+      "symbol": "∭"
+     },
+     {
+      "title": "Triple integrals",
+      "target": "Double integrals",
+      "relation": "extends",
+      "page": 3,
+      "quote": "A triple integral extends the double integral to a solid region in space."
+     }
+    ]
+   },
+   {
+    "id": "sample-calc-week9",
+    "name": "Week 9 slides – Vector calculus.pdf",
+    "context": "week 9 slides",
+    "created_at": "2026-11-12T19:05:00Z",
+    "status": "pending",
+    "pages": [
+     "A vector field assigns a vector to every point in the plane or in space. The divergence of a vector field F = (P, Q) is the sum of partial derivatives ∂P/∂x + ∂Q/∂y. It measures how much the field spreads out from a point.",
+     "A line integral adds up a vector field along a curve. It is computed by parametrizing the curve and evaluating an ordinary integral in the parameter t.",
+     "Green's theorem states that the line integral of F around a closed curve C equals the double integral of ∂Q/∂x − ∂P/∂y over the region D enclosed by C. Using Green's theorem, a difficult line integral can be traded for a double integral over the enclosed region."
+    ],
+    "items": [
+     {
+      "title": "Vector fields",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "A vector field assigns a vector to every point in the plane or in space.",
+      "symbol": "F"
+     },
+     {
+      "title": "Divergence",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "It measures how much the field spreads out from a point.",
+      "symbol": "∇·F"
+     },
+     {
+      "title": "Divergence",
+      "target": "Vector fields",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "The divergence of a vector field F = (P, Q) is the sum of partial derivatives"
+     },
+     {
+      "title": "Divergence",
+      "target": "Partial derivatives",
+      "relation": "is a sum of",
+      "page": 1,
+      "quote": "The divergence of a vector field F = (P, Q) is the sum of partial derivatives"
+     },
+     {
+      "title": "Line integrals",
+      "target": "",
+      "relation": "",
+      "page": 2,
+      "quote": "A line integral adds up a vector field along a curve.",
+      "symbol": "∮"
+     },
+     {
+      "title": "Line integrals",
+      "target": "Vector fields",
+      "relation": "relies on",
+      "page": 2,
+      "quote": "A line integral adds up a vector field along a curve."
+     },
+     {
+      "title": "Line integrals",
+      "target": "Integrals",
+      "relation": "relies on",
+      "page": 2,
+      "quote": "evaluating an ordinary integral in the parameter t"
+     },
+     {
+      "title": "Green's theorem",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "Green's theorem states that the line integral of F around a closed curve C equals the double integral of",
+      "symbol": "Green"
+     },
+     {
+      "title": "Green's theorem",
+      "target": "Line integrals",
+      "relation": "relies on",
+      "page": 3,
+      "quote": "Green's theorem states that the line integral of F around a closed curve C equals the double integral of"
+     },
+     {
+      "title": "Green's theorem",
+      "target": "Double integrals",
+      "relation": "relies on",
+      "page": 3,
+      "quote": "a difficult line integral can be traded for a double integral over the enclosed region"
+     },
+     {
+      "title": "Double integrals",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "a difficult line integral can be traded for a double integral over the enclosed region",
+      "symbol": "∬"
+     },
+     {
+      "title": "Stokes' theorem",
+      "target": "",
+      "relation": "",
+      "page": 3,
+      "quote": "Stokes' theorem generalizes Green's theorem to surfaces in space.",
+      "symbol": "Stokes"
+     }
+    ]
+   }
+  ],
+  "packs": [
+   {
+    "id": "sample-calc-office-hours",
+    "name": "Office hours memo (transcript).txt",
+    "context": "voice memo from office hours",
+    "created_at": "",
+    "status": "pending",
+    "pages": [
+     "So the divergence theorem is the three-dimensional version of what we did last week. It says the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside. Flux is a surface integral: you add up how much of the field passes through each little patch of the surface, and each patch is set up as a double integral over the parameters. Remember that divergence measures how much the field spreads out from a point, so the theorem is just adding up all that spreading."
+    ],
+    "items": [
+     {
+      "title": "Surface integrals",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "Flux is a surface integral: you add up how much of the field passes through each little patch of the surface",
+      "symbol": "∯"
+     },
+     {
+      "title": "Surface integrals",
+      "target": "Vector fields",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "you add up how much of the field passes through each little patch of the surface"
+     },
+     {
+      "title": "Surface integrals",
+      "target": "Double integrals",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "each patch is set up as a double integral over the parameters"
+     },
+     {
+      "title": "Divergence theorem",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside",
+      "symbol": "Gauss"
+     },
+     {
+      "title": "Divergence theorem",
+      "target": "Surface integrals",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside"
+     },
+     {
+      "title": "Divergence theorem",
+      "target": "Triple integrals",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside"
+     },
+     {
+      "title": "Divergence theorem",
+      "target": "Divergence",
+      "relation": "relies on",
+      "page": 1,
+      "quote": "the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside"
+     },
+     {
+      "title": "Divergence",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "divergence measures how much the field spreads out from a point",
+      "symbol": "∇·F"
+     }
+    ]
+   }
+  ],
+  "manual": {
+   "created_at": "2026-10-27T03:40:00Z",
+   "concepts": [
+    {
+     "title": "Limits",
+     "symbol": "lim",
+     "comment": "Not in the slides. The professor assumes it from Calc I, so review it before the midterm."
+    }
+   ],
+   "links": [
+    [
+     "Derivatives",
+     "Limits"
+    ],
+    [
+     "Integrals",
+     "Limits"
+    ]
+   ]
+  },
+  "target": null
+ },
+ {
+  "id": "sample-hash-tables",
+  "title": "Hash tables (sample)",
+  "docs": [
+   {
+    "id": "demo-hash-tables",
+    "name": "Hash tables · sample notes",
+    "context": "sample notes",
+    "created_at": "2026-11-13T16:00:00Z",
+    "status": "pending",
+    "pages": [
+     "A hash table maps keys to buckets. A hash function determines the bucket for a key. Chaining resolves collisions in a hash table by storing several entries in one bucket."
+    ],
+    "items": [
+     {
+      "title": "Hash table",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "A hash table maps keys to buckets.",
+      "symbol": "{ }"
+     },
+     {
+      "title": "Hash function",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "A hash function determines the bucket for a key.",
+      "symbol": "h(k)"
+     },
+     {
+      "title": "Chaining",
+      "target": "",
+      "relation": "",
+      "page": 1,
+      "quote": "Chaining resolves collisions in a hash table",
+      "symbol": "→→"
+     },
+     {
+      "title": "Chaining",
+      "target": "Hash table",
+      "relation": "resolves collisions in",
+      "page": 1,
+      "quote": "Chaining resolves collisions in a hash table"
+     }
+    ]
+   }
+  ],
+  "packs": [],
+  "manual": {
+   "created_at": "",
+   "concepts": [],
+   "links": []
+  },
+  "target": null
+ }
+]
