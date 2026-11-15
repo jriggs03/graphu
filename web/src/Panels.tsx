@@ -40,21 +40,36 @@ const liveClaims = (tools: Tools) => {
 export const claimText = (claim: Claim) =>
   claim.kind === 'edge' ? `${claim.title} ${claim.relation} ${claim.target}` : claim.title
 
+function HighlightedQuote({ quote, name }: { quote: string; name?: string }) {
+  if (!name) return <>{quote}</>
+  const start = quote.toLocaleLowerCase().indexOf(name.toLocaleLowerCase())
+  if (start < 0) return <>{quote}</>
+  return <>{quote.slice(0, start)}<mark>{quote.slice(start, start + name.length)}</mark>{quote.slice(start + name.length)}</>
+}
+
 function Quotes({ evidence, tools }: { evidence: Evidence[]; tools: Tools }) {
   const claims = new Map(tools.notebook.claims.map(claim => [claim.id, claim]))
-  return <div className="quotes">{evidence.map(item => {
-    const claim = claims.get(item.claim_id)!
-    return <figure key={item.claim_id} className={item.status}>
-      <blockquote>“{item.quote}”</blockquote>
-      <figcaption>
-        {item.source} · p. {item.page}
-        {item.status === 'pending' && <span className="tag new">new</span>}
-      </figcaption>
-      {item.status === 'pending' && <div className="actions">
+  const ids = [...new Set(evidence.map(item => item.claim_id))]
+  return <div className="quotes">{ids.map(id => {
+    const claim = claims.get(id)
+    const passages = evidence.filter(item => item.claim_id === id)
+    const linked = claim?.evidence_kind === 'linked'
+    return <div key={id}>
+      {linked && <small className="tag">Across your notes · 2 quotes</small>}
+      <div className={linked ? 'paired-quotes' : ''}>{passages.map((item, index) =>
+        <figure key={`${id}-${index}`} className={item.status}>
+          {linked && <small>{index === 0 ? 'Uses the prerequisite' : 'Explains the prerequisite'}</small>}
+          <blockquote>“<HighlightedQuote quote={item.quote} name={linked && index === 0 ? claim?.target : undefined} />”</blockquote>
+          <figcaption>{item.source} · p. {item.page}
+            {item.status === 'pending' && <span className="tag new">new</span>}
+          </figcaption>
+        </figure>
+      )}</div>
+      {claim?.status === 'pending' && <div className="actions">
         <button disabled={!claim.ready} onClick={() => tools.decide(claim, 'approved')}>Approve</button>
         <button onClick={() => tools.decide(claim, 'rejected')}>Reject</button>
       </div>}
-    </figure>
+    </div>
   })}</div>
 }
 
@@ -173,6 +188,7 @@ export function EdgePanel({ edge, tools }: { edge: Edge; tools: Tools }) {
       ? 'Approve both concepts first, then this link can join your graph.'
       : 'It is not part of your graph until you approve it.'}</p>}
     {edge.user_added && <p className="callout unsourced"><b>Not in slide !</b> You added this link yourself. No source backs it.</p>}
+    {edge.evidence_kind === 'linked' && <p className="lede">Both passages were found in your notes. Check that they support this learning dependency before approving it.</p>}
     <Quotes evidence={edge.evidence} tools={tools} />
     <div className="rel"><h3>Learn first</h3><Chip concept={to} pending={to.status === 'pending'} tools={tools} /></div>
     <div className="rel"><h3>Then</h3><Chip concept={from} pending={from.status === 'pending'} tools={tools} /></div>
@@ -200,20 +216,27 @@ export function ReviewPanel({ tools }: { tools: Tools }) {
         <div><strong>{batch.name}</strong>{batch.context && <small>“{batch.context}”</small>}</div>
         <button onClick={() => void tools.act(() => api.reviewBatch(notebook.id, batch.id, 'approved'))}>Approve all</button>
       </header>
-      {claims.map(claim => <article key={claim.id} className="claim">
+      {(['stated', 'linked'] as const).map(kind => <div key={kind}>
+        {claims.some(claim => (claim.evidence_kind ?? 'stated') === kind) &&
+          <h3>{kind === 'linked' ? 'Across your notes' : 'From one passage'}</h3>}
+      {claims.filter(claim => (claim.evidence_kind ?? 'stated') === kind).map(claim => <article key={claim.id} className="claim">
         <button className="claim-title" onClick={() => tools.select(claim.kind === 'concept'
           ? { kind: 'concept', id: claim.concept_id } : { kind: 'edge', id: `${claim.concept_id}->${claim.target_id}` })}>
           <span className="tag">{claim.merge ? 'More evidence' : claim.kind === 'edge' ? 'Link' : 'Concept'}</span>
           {claimText(claim)}
         </button>
-        {claim.quote && <blockquote>“{claim.quote}”</blockquote>}
-        <small>{claim.source ? `${claim.source} · p. ${claim.page}` : 'Added by you'}</small>
+        {claim.evidence_kind === 'linked' && claim.evidence
+          ? <Quotes evidence={claim.evidence} tools={tools} />
+          : <>{claim.quote && <blockquote>“{claim.quote}”</blockquote>}
+            <small>{claim.source ? `${claim.source} · p. ${claim.page}` : 'Added by you'}</small></>}
+
         {!claim.ready && <small className="wait">Approve both concepts to enable this link.</small>}
-        <div className="actions">
+        {claim.evidence_kind !== 'linked' && <div className="actions">
           <button disabled={!claim.ready} onClick={() => tools.decide(claim, 'approved')}>Approve</button>
           <button onClick={() => tools.decide(claim, 'rejected')}>Reject</button>
-        </div>
+        </div>}
       </article>)}
+      </div>)}
     </section>)}
   </div>
 }

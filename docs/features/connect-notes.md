@@ -103,3 +103,9 @@ Demo line: *"My notes never say these topics are related. Graphu found where one
 ## Priority
 
 Do this **after** the Anthropic key is on the live server and a real upload works end to end. If time runs short, ship `linked` first; it's the core of the feature. Bridges second.
+
+## Implementation status
+
+The first implementation adds automatic `linked` proposals, paired source evidence, Rust validation, review grouping, the map marker, and regression tests. It also adds a blank-graph entry point and a first-concept form. `stated` extraction remains unchanged. Title matching uses token boundaries to avoid substring false positives. Alias matching awaits an explicit alias model. AI bridges, bridge validation, and Suggest connections remain phase two.
+
+The existing live upload/approval path was verified with a synthetic text file before implementation. The new connection path is covered by a local mock-AI integration test; it still needs the handwritten-photo demo against the real provider after deployment.

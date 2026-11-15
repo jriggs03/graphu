@@ -156,3 +156,15 @@ npm --prefix web run build
 ## Licensing
 
 The repository starts private. An open-source license for original project code is pending the team’s decision. Dependencies retain their respective licenses.
+
+## Start a graph yourself
+
+On Home, name a graphbook and choose **Start a blank graph**. Add the first concept directly on the empty canvas; no file or API key is needed. Use **Add** for more concepts, then select a concept and choose **Link what to learn first** or **Link what builds on this**. Manual additions retain the **Not in slide !** marker until source evidence backs them.
+
+## Connections across notes
+
+After a successful AI upload, Graphu runs a connection pass over all active source pages and approved/pending concepts in that graphbook. It proposes `linked` dependencies with two exact quotes, identified by source and page. Rust verifies both quotes and checks that the first names the prerequisite, using case-insensitive, whitespace-normalized, token-boundary matching. It currently matches concept titles; there is no alias registry yet. Finding the passages verifies their provenance, not the semantic correctness of a dependency: students still approve each proposal.
+
+Review separates **From one passage** and **Across your notes**. Linked edges show **2 quotes**; their detail panel shows both citations and highlights the prerequisite name. Rejecting a pair prevents its re-proposal, even if the AI rephrases the relation. Undoing either supporting source hides the link; restoring the source restores it. Paired quotes share one claim, so review and undo affect both together. Existing databases get an additive `linked_evidence` table on startup.
+
+The connection pass adds one AI call per successfully extracted file when at least two concepts exist. Duplicate uploads skip it. It checks at most 60 returned links and refuses graphbooks over 300,000 bytes of source text instead of silently omitting pages. If the pass fails, the upload and its original proposals stay saved, with an explanation in Sources and history. AI bridges and **Suggest connections** are the next phase and are not included yet.

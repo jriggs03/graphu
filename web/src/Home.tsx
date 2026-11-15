@@ -42,6 +42,18 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
 
   const dragging = useFileDrop(dropped => setFiles(prior => [...prior, ...dropped]))
 
+  async function startBlank() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const notebook = await api.createNotebook(name.trim() || 'Untitled graphbook')
+      location.hash = `#/n/${notebook.id}`
+    } catch (error) {
+      notify({ text: error instanceof Error ? error.message : 'Could not create the graphbook.' })
+      setBusy(false)
+    }
+  }
+
   async function submit() {
     setBusy(true)
     try {
@@ -99,6 +111,9 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
           {notebooks.map(notebook => <option key={notebook.id} value={notebook.id}>{notebook.title}</option>)}
         </select>
       </ContextBox>
+      {destination === 'new' && <button className="start-blank" disabled={busy} onClick={() => void startBlank()}>
+        Start a blank graph
+      </button>}
       <p className="hint">
         Drop files anywhere on this page.
         {notebooks[0] && <> No files handy? <a href="#/n/sample-calculus">Open the calculus sample</a>.</>}

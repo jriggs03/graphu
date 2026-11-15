@@ -277,10 +277,33 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         document.extracted = ingested.extracted;
         document.note = ingested.note;
     }
-    run(&space, |graphu| {
-        let result = graphu.add_document(&id, document)?;
-        Ok(Added { notebook: graphu.get_notebook(&id)?, results: vec![result] })
-    })
+    let context = document.context.clone();
+    let Json(mut result) = run(&space, |graphu| graphu.add_document(&id, document))?;
+    if result.extracted && !result.duplicate {
+        let Json(snapshot) = run(&space, |graphu| graphu.get_notebook(&id))?;
+        match graphu_ingest::connect(&state.settings, &snapshot, &context).await {
+            Ok(links) => {
+                if let Some(batch) = &result.batch_id {
+                    let Json(count) = run(&space, |graphu| graphu.add_linked(&id, batch, &links))?;
+                    result.count += count;
+                }
+            }
+            Err(error) => {
+                let detail = match error {
+                    graphu_ingest::AiError::Unavailable(text) | graphu_ingest::AiError::Declined(text) => text,
+                };
+                // The upload is already saved. A failed connection pass must not disguise
+                // that success or invite an upload retry which is then rejected as a duplicate.
+                let note = format!("{} Notes saved; cross-note connections were not completed: {}", result.note, detail);
+                result.note = note.trim().to_string();
+                if let Some(batch) = &result.batch_id {
+                    let _ = run(&space, |graphu| graphu.set_batch_note(&id, batch, &result.note))?;
+                }
+            }
+        }
+    }
+    let Json(notebook) = run(&space, |graphu| graphu.get_notebook(&id))?;
+    Ok(Json(Added { notebook, results: vec![result] }))
 }
 
 async fn list_sample_packs(Workspace(space): Workspace, Path(id): Path<String>) -> Reply<Vec<SamplePack>> {

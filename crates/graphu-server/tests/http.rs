@@ -175,8 +175,11 @@ async fn built_pwa_is_served() {
 async fn upload_is_read_proposed_and_grounded() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static CALLS: AtomicUsize = AtomicUsize::new(0);
-    let claude = Router::new().route("/v1/messages", axum::routing::post(|| async {
+    let claude = Router::new().route("/v1/messages", axum::routing::post(|axum::Json(body): axum::Json<Value>| async move {
         CALLS.fetch_add(1, Ordering::SeqCst);
+        if body["system"].as_str().unwrap().starts_with("You propose dependencies") {
+            return axum::Json(json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": "{\"links\":[]}" }] }));
+        }
         let items = json!({ "items": [
             { "title": "Cache", "target": "", "relation": "", "symbol": "", "page": 1, "quote": "A cache keeps frequently used data close." },
             { "title": "Locality", "target": "", "relation": "", "symbol": "", "page": 1, "quote": "Caches work because programs show locality." },
@@ -208,7 +211,7 @@ async fn upload_is_read_proposed_and_grounded() {
     // The same file again: a duplicate, and Claude is not asked a second time.
     let (_, again) = upload(&app, &format!("{base}/documents?name=copy.txt"), notes).await;
     assert_eq!(again["results"][0]["duplicate"], true);
-    assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(CALLS.load(Ordering::SeqCst), 2, "extract and connect once; duplicate does neither");
 
     // Without a key, a picture is refused with a reason (this fake returns no picture anyway).
     let offline = server(None);
@@ -332,4 +335,67 @@ async fn workspaces_are_files_and_the_first_person_inherits_the_old_shared_graph
     assert!(titles(&call_as(&app, BEN, Method::GET, "/api/notebooks", None).await.1).contains(&"Ben's notes".to_string()));
     assert!(!titles(&call_as(&app, ANA, Method::GET, "/api/notebooks", None).await.1).contains(&"Ben's notes".to_string()));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[tokio::test]
+async fn uploads_connect_across_files_and_keep_uploads_when_connect_fails() {
+    use std::sync::{Arc, Mutex};
+    let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let record = requests.clone();
+    let claude = Router::new().route("/v1/messages", axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+        let record = record.clone();
+        async move {
+            record.lock().unwrap().push(body.clone());
+            let prompt = body["messages"][0]["content"][0]["text"].as_str().unwrap();
+            let payload = if body["system"].as_str().unwrap().starts_with("You propose dependencies") {
+                let data: Value = serde_json::from_str(prompt).unwrap();
+                let sources = data["sources"].as_array().unwrap();
+                if sources.len() > 2 {
+                    return (StatusCode::TOO_MANY_REQUESTS, axum::Json(json!({"error": {"message": "test rate limit"}})));
+                }
+                let find = |word: &str| sources.iter().find(|s| s["pages"][0]["text"].as_str().unwrap().starts_with(word)).unwrap();
+                let a = find("Optimization");
+                let b = find("The gradient");
+                json!({"links": [{"title": "Optimization", "target": "Gradient", "relation": "relies on",
+                    "source_a": a["source_id"], "page_a": 1, "quote_a": a["pages"][0]["text"],
+                    "source_b": b["source_id"], "page_b": 1, "quote_b": b["pages"][0]["text"]}]})
+            } else {
+                let (title, quote) = if prompt.contains("Optimization minimizes") {
+                    ("Optimization", "Optimization minimizes loss by following the gradient.")
+                } else { ("Gradient", "The gradient is the vector of partial derivatives.") };
+                json!({"items": [{"title": title, "target": "", "relation": "", "symbol": "", "page": 1, "quote": quote}]})
+            };
+            (StatusCode::OK, axum::Json(json!({"stop_reason": "end_turn", "content": [{"type": "text", "text": payload.to_string()}]})))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let settings = graphu_ingest::Settings { api_key: Some("test".into()), model: "test".into(),
+        base_url: format!("http://{}", listener.local_addr().unwrap()), transcribe_cmd: None };
+    tokio::spawn(async move { axum::serve(listener, claude).await.unwrap() });
+    let app = graphu_server::app(Graphu::in_memory().unwrap(), None, settings);
+    let (_, made) = call(&app, Method::POST, "/api/notebooks", Some(json!({"title":"Across notes"}))).await;
+    let path = format!("/api/notebooks/{}", made["id"].as_str().unwrap());
+    let a = "Optimization minimizes loss by following the gradient.";
+    let b = "The gradient is the vector of partial derivatives.";
+    assert_eq!(upload(&app, &format!("{path}/documents?name=a.txt&context=week1"), a.as_bytes().to_vec()).await.0, StatusCode::OK);
+    let (status, result) = upload(&app, &format!("{path}/documents?name=b.txt&context=week2"), b.as_bytes().to_vec()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["notebook"]["edges"][0]["evidence_kind"], "linked");
+    assert_eq!(result["notebook"]["edges"][0]["evidence"].as_array().unwrap().len(), 2);
+    assert_eq!(result["results"][0]["count"], 2);
+    assert_eq!(result["notebook"]["edges"][0]["status"], "pending");
+    let count = requests.lock().unwrap().len();
+    let (_, duplicate) = upload(&app, &format!("{path}/documents?name=b.txt"), b.as_bytes().to_vec()).await;
+    assert_eq!(duplicate["results"][0]["duplicate"], true);
+    assert_eq!(requests.lock().unwrap().len(), count, "duplicates cost no additional AI calls");
+    let (_, result) = upload(&app, &format!("{path}/documents?name=c.txt"), format!("{b} More notes.").as_bytes().to_vec()).await;
+    assert_eq!(result["notebook"]["sources"].as_array().unwrap().len(), 3);
+    assert!(result["results"][0]["note"].as_str().unwrap().contains("Notes saved"));
+    let (_, reloaded) = call(&app, Method::GET, &path, None).await;
+    assert!(reloaded["batches"].as_array().unwrap().last().unwrap()["note"].as_str().unwrap().contains("Notes saved"));
+    let requests = requests.lock().unwrap();
+    let connect = requests.iter().find(|r| r["system"].as_str().unwrap().starts_with("You propose dependencies")).unwrap();
+    let prompt = connect["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(prompt.contains("week1") && prompt.contains("week2") && prompt.contains(a) && prompt.contains(b));
+    assert!(connect["system"].as_str().unwrap().contains("untrusted data"));
 }

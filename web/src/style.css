@@ -391,3 +391,14 @@ button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color:
   .key-button { left: 10px; bottom: 10px; width: 40px; height: 40px; }
   .legend, html .notebook .legend { left: 10px; bottom: 58px; }
 }
+
+/* Manual starting point and paired source evidence. */
+.start-blank { margin-top: 14px; }
+.empty-graph .inline { width: min(440px, 90%); margin: 12px auto; }
+.paired-quotes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.paired-quotes figure { min-width: 0; overflow-wrap: anywhere; }
+.paired-quotes blockquote { font-size: 13px; }
+.quotes mark { color: var(--ink); background: var(--accent-soft); }
+.edge-label { font-size: 10px; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; pointer-events: none; }
+.edge-label.dim { opacity: .3; }
+@media (max-width: 480px) { .paired-quotes { grid-template-columns: 1fr; } }

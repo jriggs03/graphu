@@ -44,6 +44,20 @@ pub struct Candidate {
     pub symbol: Option<String>,
 }
 
+/// Cross-note dependency proposal. Source IDs disambiguate pages in different files.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinkedCandidate {
+    pub title: String,
+    pub target: String,
+    pub relation: String,
+    pub source_a: String,
+    pub page_a: i64,
+    pub quote_a: String,
+    pub source_b: String,
+    pub page_b: i64,
+    pub quote_b: String,
+}
+
 /// One quote on one page of one document.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Evidence {
@@ -80,6 +94,7 @@ pub struct Concept {
 /// `from` relies on `to`: `from` is the dependent, `to` is the prerequisite.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Edge {
+    pub evidence_kind: String,
     pub id: String,
     pub from: String,
     pub to: String,
@@ -99,6 +114,8 @@ pub enum ClaimKind {
 /// One proposal (or one thing the student added). The unit of review and undo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Claim {
+    pub evidence_kind: String,
+    pub evidence: Vec<Evidence>,
     pub id: i64,
     pub batch_id: String,
     pub kind: ClaimKind,

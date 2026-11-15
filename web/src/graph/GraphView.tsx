@@ -7,7 +7,7 @@ export type GraphNode = {
   id: string; label: string; symbol: string; r: number; tier: number
   pending: boolean; unsourced: boolean; newEvidence: boolean
 }
-export type GraphEdge = { id: string; from: string; to: string; pending: boolean; unsourced: boolean }
+export type GraphEdge = { id: string; from: string; to: string; pending: boolean; unsourced: boolean; linked?: boolean }
 export type Selection = { kind: 'concept' | 'edge'; id: string } | null
 
 type Props = {
@@ -255,6 +255,8 @@ export function GraphView(props: Props) {
               markerEnd={`url(#arrow-${isSelected ? 'accent' : onPath ? 'need' : edge.pending ? 'new'
                 : edge.unsourced ? 'warn' : incident ? 'strong' : 'soft'})`} />
             <line {...line} className="hit" />
+            {edge.linked && <text className={`edge-label${dim ? ' dim' : ''}`} x={(line.x1 + line.x2) / 2}
+              y={(line.y1 + line.y2) / 2 - 5} textAnchor="middle">2 quotes</text>}
           </g>
         })}
         {nodes.map(node => {
