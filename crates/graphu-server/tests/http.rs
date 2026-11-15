@@ -253,3 +253,83 @@ async fn picture_is_drawn_checked_and_saved() {
     let (_, notebook) = call(&app, Method::GET, "/api/notebooks/sample-calculus", None).await;
     assert!(notebook["concepts"].as_array().unwrap().iter().find(|c| c["id"] == "limits").unwrap()["visual"].is_null());
 }
+
+/// Send a request as one particular browser (its made-up user id).
+async fn call_as(app: &Router, user: &str, method: Method, path: &str, body: Option<Value>) -> (StatusCode, Value) {
+    let request = Request::builder().method(method).uri(path).header(graphu_server::USER_HEADER, user);
+    let request = match body {
+        Some(value) => request.header(header::CONTENT_TYPE, "application/json").body(Body::from(value.to_string())),
+        None => request.body(Body::empty()),
+    }.unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+fn titles(list: &Value) -> Vec<String> {
+    let mut titles: Vec<String> = list.as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap().to_string()).collect();
+    titles.sort();
+    titles
+}
+
+const ANA: &str = "0b9c1e52-7a41-4f0e-9d7c-ana000000001";
+const BEN: &str = "5d2f8a90-33c6-4b1a-8e22-ben000000002";
+
+#[tokio::test]
+async fn each_person_sees_only_their_own_graphbooks() {
+    let app = server(None);
+    let (_, made) = call_as(&app, ANA, Method::POST, "/api/notebooks", Some(json!({ "title": "Ana's notes" }))).await;
+    let ana_book = format!("/api/notebooks/{}", made["id"].as_str().unwrap());
+
+    // Each person starts with their own copy of the samples, and Ana's graphbook is hers alone.
+    let (_, ana) = call_as(&app, ANA, Method::GET, "/api/notebooks", None).await;
+    let (_, ben) = call_as(&app, BEN, Method::GET, "/api/notebooks", None).await;
+    assert_eq!(titles(&ana), ["Ana's notes", "Calculus III (sample)", "Hash tables (sample)"]);
+    assert_eq!(titles(&ben), ["Calculus III (sample)", "Hash tables (sample)"]);
+    assert_eq!(call_as(&app, BEN, Method::GET, &ana_book, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(call_as(&app, BEN, Method::DELETE, &ana_book, None).await.0, StatusCode::NOT_FOUND);
+
+    // Ben reviewing his sample does not change Ana's.
+    let (_, sample) = call_as(&app, BEN, Method::GET, HASH, None).await;
+    let batch = sample["batches"][0]["id"].as_str().unwrap();
+    call_as(&app, BEN, Method::POST, &format!("{HASH}/batches/{batch}/review"), Some(json!({ "status": "approved" }))).await;
+    let pending = |notebook: &Value| notebook["claims"].as_array().unwrap().iter().filter(|c| c["status"] == "pending").count();
+    assert_eq!(pending(&call_as(&app, BEN, Method::GET, HASH, None).await.1), 0);
+    assert_eq!(pending(&call_as(&app, ANA, Method::GET, HASH, None).await.1), 4);
+
+    // An id that could not be a safe file name is refused.
+    assert_eq!(call_as(&app, "../../etc/passwd-0000", Method::GET, "/api/notebooks", None).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(call_as(&app, "short", Method::GET, "/api/notebooks", None).await.0, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn workspaces_are_files_and_the_first_person_inherits_the_old_shared_graphbooks() {
+    let dir = std::env::temp_dir().join(format!("graphu-users-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("users")).unwrap();
+    let old = dir.join("shared.sqlite3");
+    {
+        let mut shared = Graphu::open(&old).unwrap();
+        shared.ensure_samples().unwrap();
+        shared.create_notebook("Autoencoders").unwrap();
+    }
+    let build = |adopt: bool| {
+        let users = graphu_server::Users { dir: dir.join("users"), adopt_from: adopt.then(|| old.clone()) };
+        graphu_server::app_with_users(Graphu::open(&old).unwrap(), None, graphu_ingest::Settings::offline(), Some(users))
+    };
+    let app = build(true);
+    let (_, first) = call_as(&app, ANA, Method::GET, "/api/notebooks", None).await;
+    let (_, second) = call_as(&app, BEN, Method::GET, "/api/notebooks", None).await;
+    assert!(titles(&first).contains(&"Autoencoders".to_string()), "the first arrival keeps what was there");
+    assert!(!titles(&second).contains(&"Autoencoders".to_string()), "later arrivals start fresh");
+    assert!(dir.join("users").join(format!("{ANA}.sqlite3")).is_file());
+
+    // After a restart, each person still has their own graphbooks.
+    call_as(&app, BEN, Method::POST, "/api/notebooks", Some(json!({ "title": "Ben's notes" }))).await;
+    drop(app);
+    let app = build(true);
+    assert!(titles(&call_as(&app, BEN, Method::GET, "/api/notebooks", None).await.1).contains(&"Ben's notes".to_string()));
+    assert!(!titles(&call_as(&app, ANA, Method::GET, "/api/notebooks", None).await.1).contains(&"Ben's notes".to_string()));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
