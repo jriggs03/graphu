@@ -78,6 +78,9 @@ async fn text_file_is_read_locally_and_sent_for_extraction() {
     assert!(fields.get("heading").is_some() && fields.get("snippet").is_some());
     let prompt = body["messages"][0]["content"][0]["text"].as_str().unwrap();
     assert!(prompt.contains("week 3 notes") && prompt.contains("[\"Trees\"]") && prompt.contains("A heap is a tree"));
+    // A short file gets the small cap, and the request asks for the whole document to be covered.
+    assert!(prompt.contains("<budget>at most 25 concepts and 35 links</budget>"));
+    assert!(body["system"].as_str().unwrap().contains("from the first page to the last"));
 }
 
 #[tokio::test]

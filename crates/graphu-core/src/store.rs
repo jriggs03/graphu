@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS symbols (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, symbol TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
 );
+CREATE TABLE IF NOT EXISTS extractions (key TEXT PRIMARY KEY, body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS comments (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, text TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
@@ -175,6 +176,21 @@ impl Graphu {
     /// The server checks this first so a duplicate never costs an AI call.
     pub fn has_source(&self, notebook: &str, source_id: &str) -> Result<bool> {
         exists(&self.conn, "SELECT 1 FROM sources WHERE notebook_id = ?1 AND id = ?2", params![notebook, source_id])
+    }
+
+    /// What the AI answered the last time it was given exactly this input, if ever.
+    /// `key` is a hash of the file, the student's note about it, the concepts already in the
+    /// graph and the model, so the same file added again gives the same proposals.
+    pub fn saved_extraction(&self, key: &str) -> Result<Option<String>> {
+        let mut statement = self.conn.prepare("SELECT body FROM extractions WHERE key = ?1")?;
+        let mut rows = statement.query(params![key])?;
+        Ok(match rows.next()? { Some(row) => Some(row.get(0)?), None => None })
+    }
+
+    /// Remember the AI's answer for `key`. The first answer is kept; later ones never replace it.
+    pub fn save_extraction(&self, key: &str, body: &str) -> Result<()> {
+        self.conn.execute("INSERT OR IGNORE INTO extractions (key, body) VALUES (?1, ?2)", params![key, body])?;
+        Ok(())
     }
 
     /// Store one document as a new batch.

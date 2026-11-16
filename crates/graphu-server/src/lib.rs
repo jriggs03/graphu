@@ -246,6 +246,15 @@ async fn get_notebook(Workspace(space): Workspace, Path(id): Path<String>) -> Re
     run(&space, |graphu| graphu.get_notebook(&id))
 }
 
+/// The AI's answer for one file, kept so that the same input gives the same graph.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedExtraction {
+    pages: Vec<String>,
+    items: Vec<graphu_core::Candidate>,
+    extracted: bool,
+    note: String,
+}
+
 /// The request body is the raw file, of any kind.
 ///
 /// 1. Hash it. The same bytes twice is a duplicate and costs no AI call.
@@ -267,15 +276,31 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         Ok((graphu.has_source(&id, &document.source_id)?, known))
     })?;
     if !duplicate {
-        let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &body).await
-            .map_err(|error| match error {
-                IngestError::Unreadable(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
-                IngestError::Ai(text) => Failure(StatusCode::BAD_GATEWAY, text),
-            })?;
-        document.pages = ingested.pages;
-        document.items = ingested.items;
-        document.extracted = ingested.extracted;
-        document.note = ingested.note;
+        // The same file, note, existing concepts and model always give the same proposals:
+        // the AI's first answer is saved and reused, so a graph can be rebuilt exactly.
+        let key = sha256_hex(serde_json::json!(["v1", document.source_id, document.context, known, state.settings.model]).to_string().as_bytes());
+        let Json(saved) = run(&space, |graphu| graphu.saved_extraction(&key))?;
+        let saved: Option<SavedExtraction> = saved.and_then(|body| serde_json::from_str(&body).ok());
+        let answer = match saved {
+            Some(answer) => answer,
+            None => {
+                let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &body).await
+                    .map_err(|error| match error {
+                        IngestError::Unreadable(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
+                        IngestError::Ai(text) => Failure(StatusCode::BAD_GATEWAY, text),
+                    })?;
+                let answer = SavedExtraction { pages: ingested.pages, items: ingested.items, extracted: ingested.extracted, note: ingested.note };
+                if answer.extracted {
+                    let body = serde_json::to_string(&answer).unwrap_or_default();
+                    let Json(()) = run(&space, |graphu| graphu.save_extraction(&key, &body))?;
+                }
+                answer
+            }
+        };
+        document.pages = answer.pages;
+        document.items = answer.items;
+        document.extracted = answer.extracted;
+        document.note = answer.note;
     }
     let context = document.context.clone();
     let Json(mut result) = run(&space, |graphu| graphu.add_document(&id, document))?;

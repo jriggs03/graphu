@@ -209,9 +209,19 @@ async fn upload_is_read_proposed_and_grounded() {
     assert_eq!(added["notebook"]["sources"][0]["pages"].as_array().unwrap().len(), 1);
 
     // The same file again: a duplicate, and Claude is not asked a second time.
-    let (_, again) = upload(&app, &format!("{base}/documents?name=copy.txt"), notes).await;
+    let (_, again) = upload(&app, &format!("{base}/documents?name=copy.txt"), notes.clone()).await;
     assert_eq!(again["results"][0]["duplicate"], true);
-    assert_eq!(CALLS.load(Ordering::SeqCst), 2, "extract and connect once; duplicate does neither");
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1, "one extraction; one file has nothing to connect across");
+
+    // The same file with the same note in a new graphbook: the saved answer is reused, so the
+    // proposals are exactly the same and Claude is not asked again.
+    let (_, second) = call(&app, Method::POST, "/api/notebooks", Some(json!({ "title": "Systems again" }))).await;
+    let other = format!("/api/notebooks/{}", second["id"].as_str().unwrap());
+    let (_, rebuilt) = upload(&app, &format!("{other}/documents?name=week4.txt&context=week%204"), notes.clone()).await;
+    let shape = |claims: &Value| claims.as_array().unwrap().iter()
+        .map(|claim| (claim["title"].to_string(), claim["target"].to_string(), claim["quote"].to_string())).collect::<Vec<_>>();
+    assert_eq!(shape(&rebuilt["notebook"]["claims"]), shape(&added["notebook"]["claims"]));
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1, "same input, same graph, no new AI call");
 
     // Without a key, a picture is refused with a reason (this fake returns no picture anyway).
     let offline = server(None);
