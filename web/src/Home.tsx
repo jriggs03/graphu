@@ -30,6 +30,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
     manage(async () => {
       await api.deleteNotebook(notebook.id)
       localStorage.removeItem(`graphu.positions.${notebook.id}`)
+      localStorage.removeItem(`graphu.place.${notebook.id}`)
       if (destination === notebook.id) setDestination('new')
       notify({ text: `Deleted “${notebook.title}”.` })
     })
@@ -68,6 +69,14 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
     }
   }
 
+  // The graphbook that was open last, if it still exists.
+  const last = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('graphu.last') ?? 'null') as { id: string } | null
+      return notebooks.find(notebook => notebook.id === saved?.id)
+    } catch { return undefined }
+  })()
+
   const shown = notebooks.filter(notebook => tab === 'all' || notebook.pending > 0)
 
   return <div className="home">
@@ -100,6 +109,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
     </aside>
     <main className="hero">
       <p className="greeting">Hi, {user?.name}</p>
+      {last && <a className="resume" href={`#/n/${last.id}`}>Continue where you left off: <b>{last.title}</b> →</a>}
       <h1 className="wordmark"><img src="/icon-192.png" alt="" />Graphu</h1>
       <p className="tagline">Your slides, notes and voice memos become a concept map. Every concept points back to the page it came from, and nothing joins the map until you approve it.</p>
       {destination === 'new' && <input className="name-box" value={name} maxLength={80}
