@@ -93,9 +93,30 @@ pub fn text_pages(text: &str) -> Vec<String> {
 /// Text of each page of a PDF. A scanned PDF comes back with empty pages.
 pub fn pdf_pages(bytes: &[u8]) -> Result<Vec<String>, String> {
     // The PDF library can panic on unusual files, so contain it.
-    std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem_by_pages(bytes))
+    let pages = std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem_by_pages(bytes))
         .map_err(|_| "This PDF could not be read.".to_string())?
-        .map_err(|_| "This PDF could not be read. Encrypted PDFs are not supported.".to_string())
+        .map_err(|_| "This PDF could not be read. Encrypted PDFs are not supported.".to_string())?;
+    Ok(pages.iter().map(|page| plain_letters(page)).collect())
+}
+
+/// Slides often store "fi" or "ff" as one joined character. Spell them out, so that a search
+/// for "different" finds "diﬀerent" and a quote typed with plain letters matches the page.
+///
+/// in:  "Classiﬁcation with diﬀerent heads"      out: "Classification with different heads"
+pub fn plain_letters(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for letter in text.chars() {
+        match letter {
+            'ﬀ' => out.push_str("ff"),
+            'ﬁ' => out.push_str("fi"),
+            'ﬂ' => out.push_str("fl"),
+            'ﬃ' => out.push_str("ffi"),
+            'ﬄ' => out.push_str("ffl"),
+            'ﬅ' | 'ﬆ' => out.push_str("st"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn unescape(text: &str) -> String {
@@ -159,6 +180,12 @@ pub fn word_pages(bytes: &[u8]) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joined_letters_in_a_pdf_are_spelled_out() {
+        assert_eq!(plain_letters("Classiﬁcation with diﬀerent heads"), "Classification with different heads");
+        assert_eq!(plain_letters("eﬃcient workﬂow, ∂P/∂x stays"), "efficient workflow, ∂P/∂x stays");
+    }
 
     #[test]
     fn classifies_by_content_first_then_by_name() {

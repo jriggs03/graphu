@@ -35,7 +35,8 @@ Propose the concepts the material teaches and the links between them:
 few words a student would say aloud (\"Vertex cover\", not \"The minimum vertex cover problem\"), because it is \
 drawn inside a small circle. Every concept needs a `symbol` of at most 6 characters, drawn large above the \
 title so the map can be read at a glance: use the standard notation when there is one (∫, d/dx, O(n), α, \
-`stat`), otherwise the usual abbreviation (MST, TSP, VC), otherwise a short mnemonic of your own.
+`stat`), otherwise the usual abbreviation (MST, TSP, VC), otherwise a short mnemonic of your own. Prefer real \
+notation in every subject, not only mathematics: QKᵀ for dot-product attention, softmax, ∑, →, H₂O, F=ma, `for`.
 - A concept also has a `heading`: one plain sentence, in your own words, saying what the concept does \
 (\"The encoder compresses the input into a latent vector\"). It is shown to the student tagged as an AI summary. \
 And a `snippet`: the one formula or line of code on that page that best shows the concept, copied exactly as \
@@ -51,8 +52,19 @@ characters copied from that page that supports the item.
 <known_concepts> lists concepts already in the student's graph. When the material is about one of them, \
 reuse that exact title so the new quote is offered as extra evidence instead of a duplicate concept.
 
-Prefer the main ideas over an exhaustive list: at most about 25 concepts and 30 links. When you are \
-unsure whether the material supports something, leave it out.";
+Miss nothing. Go through the document from the first page to the last and give every topic it teaches \
+its own concept: each definition, method, formula, architecture, worked piece of code and application, in the \
+later sections as much as the opening ones. A run of slides that builds up one diagram is one concept. \
+Leave out only what teaches nothing (title slides, bare citations, administrative notes). <budget> is the most \
+you may propose; only when the material truly has more than that, keep what it spends the most space on.
+
+Be consistent: name each concept with the wording the material itself uses for it (usually the slide title), \
+so that reading the same document again gives the same concepts and links.
+
+Pages that come from slides are often a title followed by diagram labels in reading order. A slide's title or \
+a bullet is a fine quote when it is at least 12 characters long; copy it with the exact characters on the page.
+
+When you are unsure whether the material supports something, leave it out.";
 
 const TRANSCRIBE_SYSTEM: &str = "\
 You transcribe a student's course material (handwritten notes, photographed slides, scanned pages) \
@@ -179,14 +191,27 @@ pub async fn transcribe(settings: &Settings, media_type: &str, bytes: &[u8]) -> 
     Ok(transcript.pages)
 }
 
+/// How much to ask for: a long deck teaches more than a short one, so the cap grows with it.
+///
+/// in:  pages that have text      out: (most concepts, most links)
+///       1 to 25                        (25, 35)
+///      40                              (40, 56)
+///      60 or more                      (60, 84)
+pub(crate) fn budget(pages: usize) -> (usize, usize) {
+    let concepts = pages.clamp(25, 60);
+    (concepts, concepts * 7 / 5)
+}
+
 /// Propose concepts and links from page text. Nothing here is shown until grounding passes.
 pub async fn extract(settings: &Settings, context: &str, known: &[String], pages: &[String]) -> Result<Vec<Candidate>, AiError> {
     let numbered: serde_json::Map<String, Value> = pages.iter().enumerate()
         .filter(|(_, page)| !page.trim().is_empty())
         .map(|(index, page)| ((index + 1).to_string(), json!(page))).collect();
+    let (concepts, links) = budget(numbered.len());
     let prompt = format!(
         "<student_note_about_this_material>{context}</student_note_about_this_material>\n\
-         <known_concepts>{}</known_concepts>\n<pages>{}</pages>",
+         <known_concepts>{}</known_concepts>\n\
+         <budget>at most {concepts} concepts and {links} links</budget>\n<pages>{}</pages>",
         json!(known), Value::Object(numbered));
     let text = json!({ "type": "string" });
     let item = object(json!({
@@ -194,7 +219,7 @@ pub async fn extract(settings: &Settings, context: &str, known: &[String], pages
         "page": { "type": "integer" }, "quote": text,
     }));
     let schema = object(json!({ "items": { "type": "array", "items": item } }));
-    let reply = ask(settings, EXTRACT_SYSTEM, json!([{ "type": "text", "text": prompt }]), schema, "medium", 16_000).await?;
+    let reply = ask(settings, EXTRACT_SYSTEM, json!([{ "type": "text", "text": prompt }]), schema, "medium", 32_000).await?;
     let extraction: Extraction = serde_json::from_value(reply)
         .map_err(|_| AiError::Unavailable("Claude's proposals had an unexpected shape.".into()))?;
     Ok(extraction.items.into_iter().map(|item| Candidate {
@@ -219,7 +244,8 @@ const CONNECT_SYSTEM: &str = "You propose dependencies across a student's notes.
 /// Read every active source, including earlier uploads. Core checks the returned passages.
 pub async fn connect(settings: &Settings, notebook: &graphu_core::Notebook, context: &str)
     -> Result<Vec<graphu_core::LinkedCandidate>, AiError> {
-    if notebook.concepts.len() < 2 || notebook.sources.is_empty() {
+    // With one source there is nothing to connect across: extraction already read all of it.
+    if notebook.concepts.len() < 2 || notebook.sources.len() < 2 {
         return Ok(Vec::new());
     }
     // Bound the whole notebook, not just a single upload. Never silently omit old pages.
@@ -251,4 +277,17 @@ pub async fn connect(settings: &Settings, notebook: &graphu_core::Notebook, cont
     let result: Connections = serde_json::from_value(reply)
         .map_err(|_| AiError::Unavailable("Claude's connections had an unexpected shape.".into()))?;
     Ok(result.links)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::budget;
+
+    #[test]
+    fn a_longer_deck_may_propose_more() {
+        assert_eq!(budget(1), (25, 35));
+        assert_eq!(budget(25), (25, 35));
+        assert_eq!(budget(40), (40, 56));
+        assert_eq!(budget(500), (60, 84));
+    }
 }
