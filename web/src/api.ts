@@ -12,6 +12,7 @@
  */
 import { httpBackend } from './http'
 import { sampleBackend } from './sample/store'
+import { stressNotebook } from './graph/stress'
 
 export type Status = 'pending' | 'approved' | 'rejected'
 
@@ -175,6 +176,10 @@ function backend(): Promise<Backend> {
 }
 
 export const api = new Proxy({} as Backend, {
-  get: (_, name: keyof Backend) => (...args: unknown[]) =>
-    backend().then(found => (found[name] as (...values: unknown[]) => unknown)(...args)),
+  get: (_, name: keyof Backend) => (...args: unknown[]) => {
+    // `#/n/stress-800` opens a made-up graphbook for checking speed. It never reaches a backend.
+    const made = name === 'getNotebook' ? stressNotebook(String(args[0])) : null
+    if (made) return Promise.resolve(made)
+    return backend().then(found => (found[name] as (...values: unknown[]) => unknown)(...args))
+  },
 })

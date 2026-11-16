@@ -299,11 +299,14 @@ details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
 .popover .check input { width: auto; }
 
 /* ---------- map background, like squared or dotted paper ---------- */
-html[data-background="dots"] .graph {
+/* Its own layer: moving it on every pan frame must not restyle the nodes. */
+.graph .paper { position: absolute; inset: 0; pointer-events: none; }
+.graph svg { position: relative; }
+html[data-background="dots"] .graph .paper {
   background-image: radial-gradient(circle, var(--edge-strong) 1.1px, transparent 1.6px);
   background-size: var(--gs) var(--gs); background-position: var(--gx) var(--gy);
 }
-html[data-background="grid"] .graph {
+html[data-background="grid"] .graph .paper {
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: var(--gs) var(--gs); background-position: var(--gx) var(--gy);
 }
@@ -411,3 +414,10 @@ button.danger:hover:not(:disabled) { background: var(--warn-soft); border-color:
 .snippet { border: 0; padding: 0; margin: 0; }
 .snippet pre { margin: 0; font-family: var(--mono); font-size: 15.5px; line-height: 1.5; background: var(--code); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .snippet figcaption { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* Zoomed far out: a name would be too small to read, so only the symbol is drawn. */
+.graph.far .node.has-sym .name, .graph.far .node .flag, .graph.far .edge-label, .graph.far .step { display: none; }
+
+/* Home: one click back to the graphbook that was open last. */
+.resume { display: inline-block; margin: 2px 0 10px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); text-decoration: none; font-size: 14px; }
+.resume:hover { border-color: var(--accent); }

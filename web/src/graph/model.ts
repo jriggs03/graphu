@@ -85,48 +85,78 @@ export function route(target: string, edges: Pair[], label: (id: string) => stri
 
 export type Match = { id: string; why: string }
 
-/** Search concept names, quotes, the student's comments, and the text of cited slides. */
-export function search(notebook: Notebook, query: string): Match[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return []
+/** Lower case, with accents removed and joined letters spelled out: "Poincaré" → "poincare". */
+export const fold = (text: string) => text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+type Field = { kind: string; text: string; folded: string }
+export type SearchIndex = { id: string; label: string; name: string; fields: Field[] }[]
+
+/**
+ * Everything searchable about each concept, prepared once per graphbook so that typing stays
+ * fast on a large graph. Fields are in order of importance: a hit in the name beats a hit in
+ * the formula, the AI summary, a quote, the student's note, and last the text of a cited slide.
+ */
+export function searchIndex(notebook: Notebook): SearchIndex {
   const pages = new Map(notebook.sources.map(source => [source.id, source.pages]))
-  const around = (text: string) => {
-    const at = text.toLowerCase().indexOf(q)
-    const start = Math.max(0, at - 30)
-    return (start ? '…' : '') + text.slice(start, at + q.length + 40).trim() + (at + q.length + 40 < text.length ? '…' : '')
+  return notebook.concepts.map(concept => {
+    const fields: Field[] = []
+    const add = (kind: string, text: string | undefined) => { if (text) fields.push({ kind, text, folded: fold(text) }) }
+    add('Name', concept.label)
+    add('Symbol', concept.symbol)
+    add('Formula', concept.snippet?.text)
+    add('AI summary', concept.heading)
+    for (const item of concept.evidence) add('Quote', item.quote)
+    add('Your note', concept.comment)
+    const seen = new Set<string>()
+    for (const item of concept.evidence) {
+      const key = `${item.source_id}:${item.page}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      add(`${item.source} p. ${item.page}`, pages.get(item.source_id)?.[item.page - 1])
+    }
+    return { id: concept.id, label: concept.label, name: fold(concept.label), fields }
+  })
+}
+
+/**
+ * Find concepts. Every word typed must appear somewhere in the concept (name, formula, summary,
+ * quotes, notes or cited slides), in any order. Best matches come first:
+ *
+ *   "grad"            → Gradient (name starts with it), then concepts whose quotes mention it
+ *   "double region"   → Double integrals (its quote has both words)
+ */
+export function search(index: SearchIndex, query: string): Match[] {
+  const phrase = fold(query).trim().replace(/\s+/g, ' ')
+  if (!phrase) return []
+  const words = phrase.split(' ')
+  const found: { id: string; label: string; score: number; why: string }[] = []
+  for (const entry of index) {
+    let score = entry.name === phrase ? 0 : entry.name.startsWith(phrase) ? 1
+      : entry.name.includes(` ${phrase}`) ? 2 : entry.name.includes(phrase) ? 3 : -1
+    let why = 'Name'
+    if (score < 0) {
+      // Each word may be in a different field. The concept ranks by its least important hit.
+      let worst = -1
+      let word = ''
+      for (const part of words) {
+        const place = entry.fields.findIndex(field => field.folded.includes(part))
+        if (place < 0) { worst = -1; break }
+        if (place > worst) { worst = place; word = part }
+      }
+      if (worst < 0) continue
+      const field = entry.fields[worst]
+      score = 4 + worst
+      if (field.kind !== 'Name') {
+        const at = field.folded.indexOf(word)
+        const start = Math.max(0, at - 30)
+        const end = at + word.length + 40
+        const excerpt = (start ? '…' : '') + field.text.slice(start, end).trim() + (end < field.text.length ? '…' : '')
+        why = field.kind === 'Quote' ? `Quote · “${excerpt}”` : `${field.kind} · ${excerpt}`
+      }
+    }
+    found.push({ id: entry.id, label: entry.label, score, why })
   }
-  const matches: Match[] = []
-  for (const concept of notebook.concepts) {
-    if (concept.label.toLowerCase().includes(q) || concept.symbol.toLowerCase().includes(q)) {
-      matches.push({ id: concept.id, why: 'Name' })
-      continue
-    }
-    if (concept.snippet?.text.toLowerCase().includes(q)) {
-      matches.push({ id: concept.id, why: `Formula · ${concept.snippet.text}` })
-      continue
-    }
-    if (concept.heading.toLowerCase().includes(q)) {
-      matches.push({ id: concept.id, why: `AI summary · ${around(concept.heading)}` })
-      continue
-    }
-    const quote = concept.evidence.find(item => item.quote.toLowerCase().includes(q))
-    if (quote) {
-      matches.push({ id: concept.id, why: `Quote · “${around(quote.quote)}”` })
-      continue
-    }
-    if (concept.comment.toLowerCase().includes(q)) {
-      matches.push({ id: concept.id, why: `Your note · ${around(concept.comment)}` })
-      continue
-    }
-    const slide = concept.evidence.find(item => pages.get(item.source_id)?.[item.page - 1]?.toLowerCase().includes(q))
-    if (slide) {
-      matches.push({
-        id: concept.id,
-        why: `${slide.source} p. ${slide.page} · ${around(pages.get(slide.source_id)![slide.page - 1])}`,
-      })
-    }
-  }
-  return matches
+  return found.sort((a, b) => a.score - b.score || a.label.localeCompare(b.label)).map(({ id, why }) => ({ id, why }))
 }
 
 const SMALL_WORDS = new Set(['a', 'an', 'and', 'for', 'in', 'of', 'on', 'the', 'to', 'with'])

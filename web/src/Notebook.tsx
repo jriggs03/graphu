@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import type { Claim, Notebook, SamplePack, Status } from './api'
 import { GraphView } from './graph/GraphView'
-import type { GraphEdge, GraphNode, Selection } from './graph/GraphView'
+import type { GraphEdge, GraphNode, Selection, View } from './graph/GraphView'
 import { layout, separate } from './graph/layout'
-import { RADIUS, abbreviate, need, route, search, tiers } from './graph/model'
+import { RADIUS, abbreviate, need, route, search, searchIndex, tiers } from './graph/model'
 import type { Pair, Point } from './graph/model'
 import { ConceptPanel, EdgePanel, HistoryPanel, ReviewPanel, claimText } from './Panels'
 import type { Tools } from './Panels'
@@ -18,6 +18,13 @@ function savedPositions(id: string): Record<string, Point> {
   try { return JSON.parse(localStorage.getItem(positionKey(id)) ?? '{}') } catch { return {} }
 }
 
+/** Where the student was in a graphbook: the part of the map on screen and the open concept. */
+type Place = { view?: View; selected?: string }
+const placeKey = (id: string) => `graphu.place.${id}`
+function savedPlace(id: string): Place {
+  try { return JSON.parse(localStorage.getItem(placeKey(id)) ?? '{}') } catch { return {} }
+}
+
 export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toast) => void }) {
   const [notebook, setNotebook] = useState<Notebook>()
   const [missing, setMissing] = useState(false)
@@ -26,6 +33,19 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   const [query, setQuery] = useState('')
   const [positions, setPositions] = useState<Record<string, Point>>(() => savedPositions(id))
   const [fitCount, setFitCount] = useState(0)
+  // Coming back to a graphbook puts the student where they left off.
+  const [startPlace] = useState(() => savedPlace(id))
+  const place = useRef<Place>(startPlace)
+  const saving = useRef(0)
+  const remember = useCallback((change: Place) => {
+    place.current = { ...place.current, ...change }
+    clearTimeout(saving.current)
+    saving.current = window.setTimeout(() => {
+      try { localStorage.setItem(placeKey(id), JSON.stringify(place.current)) } catch { /* storage may be full */ }
+    }, 250)
+  }, [id])
+  const rememberView = useCallback((view: View) => remember({ view }), [remember])
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
   const [adding, setAdding] = useState<File[] | null>(null)
   const searchBox = useRef<HTMLInputElement>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; world: Point; node?: string } | null>(null)
@@ -39,10 +59,15 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   useEffect(() => {
     api.getNotebook(id).then(loaded => {
       setNotebook(loaded)
+      localStorage.setItem('graphu.last', JSON.stringify({ id: loaded.id, title: loaded.title }))
       // On a phone the panel covers the map, so it only opens when asked for.
-      if (loaded.claims.some(claim => claim.status === 'pending') && !matchMedia('(max-width: 900px)').matches) setMode('review')
+      if (matchMedia('(max-width: 900px)').matches) return
+      const open = startPlace.selected
+      if (open && loaded.concepts.some(concept => concept.id === open)) setSelected({ kind: 'concept', id: open })
+      else if (loaded.claims.some(claim => claim.status === 'pending')) setMode('review')
     }).catch(() => setMissing(true))
-  }, [id])
+  }, [id, startPlace])
+  useEffect(() => { remember({ selected: selected?.kind === 'concept' ? selected.id : undefined }) }, [selected, remember])
 
   const dragging = useFileDrop(files => setAdding(prior => [...(prior ?? []), ...files]))
 
@@ -71,7 +96,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     const edges: GraphEdge[] = notebook.edges.map(edge => ({
       id: edge.id, from: edge.from, to: edge.to, pending: edge.status === 'pending', unsourced: edge.user_added, linked: edge.evidence_kind === 'linked',
     }))
-    const label = (key: string) => notebook.concepts.find(concept => concept.id === key)?.label ?? key
+    const labels = new Map(notebook.concepts.map(concept => [concept.id, concept.label]))
+    const label = (key: string) => labels.get(key) ?? key
     const order = notebook.target ? route(notebook.target, pairs, label) : []
     return {
       nodes, edges, pairs, order, label,
@@ -93,7 +119,8 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     })
   }, [graph, id])
 
-  const matches = useMemo(() => (notebook && query.trim() ? search(notebook, query) : null), [notebook, query])
+  const index = useMemo(() => (notebook ? searchIndex(notebook) : []), [notebook])
+  const matches = useMemo(() => (query.trim() ? search(index, query) : null), [index, query])
   const matchSet = useMemo(() => (matches ? new Set(matches.map(match => match.id)) : null), [matches])
 
   useEffect(() => {
@@ -126,6 +153,11 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
     }
     setSelected(selection)
     if (selection) setMode('detail')
+  }
+  /** Open a concept and bring it to the middle of the map (from search results and the route). */
+  const goTo = (key: string) => {
+    select({ kind: 'concept', id: key })
+    setFocus(prior => ({ id: key, n: (prior?.n ?? 0) + 1 }))
   }
   const startLink = (from: string, as: 'dependent' | 'prerequisite') => {
     setMenu(null)
@@ -208,12 +240,14 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         <h1>{notebook.title}</h1>
         <div className="search">
           <input ref={searchBox} type="search" value={query} onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Enter' && matches?.length) goTo(matches[0].id) }}
             placeholder="Search names, slide text, quotes and your notes" aria-label="Search this graphbook" />
           {matches && <div className="results">
-            <small>{matches.length ? `${matches.length} match${matches.length === 1 ? '' : 'es'} highlighted` : 'No matches'}</small>
-            {matches.map(match => <button key={match.id} onClick={() => select({ kind: 'concept', id: match.id })}>
+            <small>{matches.length ? `${matches.length} match${matches.length === 1 ? '' : 'es'} highlighted · Enter opens the first` : 'No matches'}</small>
+            {matches.slice(0, 40).map(match => <button key={match.id} onClick={() => goTo(match.id)}>
               <strong>{graph.label(match.id)}</strong><span>{match.why}</span>
             </button>)}
+            {matches.length > 40 && <small>and {matches.length - 40} more. Type another word to narrow it down.</small>}
           </div>}
         </div>
       </header>
@@ -228,7 +262,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
         </label>
         {graph.order.length > 0 && <ol className="route" aria-label="What you need to know, in order">
           {graph.order.map((key, index) => <li key={key}>
-            <button className={selected?.id === key ? 'on' : ''} onClick={() => select({ kind: 'concept', id: key })}>
+            <button className={selected?.id === key ? 'on' : ''} onClick={() => goTo(key)}>
               <span className="n">{index + 1}.</span>{graph.label(key)}
             </button>
           </li>)}
@@ -244,7 +278,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
 
       {graph.nodes.length ? <GraphView nodes={graph.nodes} edges={graph.edges} positions={positions}
         selected={selected} matches={matchSet} need={graph.needSet} steps={graph.steps} target={notebook.target}
-        fitKey={`${id}:${fitCount}`} onSelect={select} onMenu={at => { setNewName(''); setMenu(at) }}
+        fitKey={`${id}:${fitCount}`} startView={startPlace.view} onView={rememberView} focus={focus} onSelect={select} onMenu={at => { setNewName(''); setMenu(at) }}
         onMove={(key, point) => setPositions(prior => separate({ ...prior, [key]: point }, graph.nodes, key))}
         onMoveEnd={() => setPositions(prior => { localStorage.setItem(positionKey(id), JSON.stringify(prior)); return prior })} />
         : <div className="graph empty-graph"><p>This graphbook is empty.</p>
