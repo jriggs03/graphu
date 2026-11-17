@@ -1,3 +1,4 @@
+import { isRequirement } from './graph/relations'
 /** The right-hand side of a notebook: concept details, the review queue, and batch history. */
 import { useEffect, useState } from 'react'
 import { api } from './api'
@@ -192,8 +193,8 @@ export function BundlePanel({ links, tools }: { links: Edge[]; tools: Tools }) {
 export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tools }) {
   const { notebook, order } = tools
   const byId = new Map(notebook.concepts.map(item => [item.id, item]))
-  const learnFirst = notebook.edges.filter(edge => edge.from === concept.id)
-  const usedBy = notebook.edges.filter(edge => edge.to === concept.id)
+  const learnFirst = notebook.edges.filter(edge => edge.from === concept.id && isRequirement(edge.relation))
+  const usedBy = notebook.edges.filter(edge => edge.to === concept.id && isRequirement(edge.relation))
   const step = order.indexOf(concept.id)
   const goal = notebook.target ? byId.get(notebook.target) : undefined
   const approved = concept.status === 'approved'
@@ -287,7 +288,7 @@ export function EdgePanel({ edge, tools }: { edge: Edge; tools: Tools }) {
     {edge.user_added && <p className="callout unsourced"><b>Not in slide !</b> You added this link yourself. No source backs it.</p>}
     {edge.evidence_kind === 'linked' && <p className="lede">Both passages were found in your notes. Check that they support this learning dependency before approving it.</p>}
     <Quotes evidence={edge.evidence} tools={tools} />
-    <div className="rel"><h3>Learn first</h3><Chip concept={to} pending={to.status === 'pending'} tools={tools} /></div>
+    <div className="rel"><h3>{isRequirement(edge.relation) ? 'Learn first' : edge.relation}</h3><Chip concept={to} pending={to.status === 'pending'} tools={tools} /></div>
     <div className="rel"><h3>Then</h3><Chip concept={from} pending={from.status === 'pending'} tools={tools} /></div>
     <button className="danger remove" onClick={() => void remove(tools,
       liveClaims(tools).filter(claim => claim.kind === 'edge' && claim.concept_id === edge.from && claim.target_id === edge.to),

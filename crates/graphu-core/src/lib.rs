@@ -9,6 +9,7 @@
 
 mod error;
 pub mod graph;
+pub mod relations;
 pub mod ground;
 mod model;
 mod sample;

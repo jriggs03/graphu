@@ -1,3 +1,4 @@
+import { isRequirement } from './graph/relations'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import type { Claim, Notebook, SamplePack, Status } from './api'
@@ -94,7 +95,7 @@ export function NotebookScreen({ id, notify }: { id: string; notify: (toast: Toa
   // Everything about the whole graphbook: the learning route crosses every level.
   const whole = useMemo(() => {
     if (!notebook || !nest) return null
-    const pairs: Pair[] = notebook.edges.filter(edge => edge.status === 'approved').map(edge => [edge.from, edge.to])
+    const pairs: Pair[] = notebook.edges.filter(edge => edge.status === 'approved' && isRequirement(edge.relation) && notebook.concepts.some(c => c.id === edge.from && c.status === 'approved') && notebook.concepts.some(c => c.id === edge.to && c.status === 'approved')).map(edge => [edge.from, edge.to])
     const order = notebook.target ? route(notebook.target, pairs, nest.label) : []
     return {
       order, needSet: notebook.target ? need(notebook.target, pairs) : new Set<string>(),

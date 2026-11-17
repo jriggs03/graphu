@@ -19,6 +19,20 @@ pub fn approved(notebook: &Notebook) -> (Vec<String>, Vec<Pair>) {
     (ids, pairs)
 }
 
+/// Approved learning dependencies, with approved endpoints and unique pairs.
+pub fn prerequisites(notebook: &Notebook) -> (Vec<String>, Vec<Pair>) {
+    let (ids, _) = approved(notebook);
+    let allowed: HashSet<&String> = ids.iter().collect();
+    let mut seen = HashSet::new();
+    let pairs = notebook.edges.iter()
+        .filter(|edge| edge.status == Status::Approved
+            && crate::relations::is_requirement(&edge.relation)
+            && allowed.contains(&edge.from) && allowed.contains(&edge.to))
+        .map(|edge| (edge.from.clone(), edge.to.clone()))
+        .filter(|pair| seen.insert(pair.clone())).collect();
+    (ids, pairs)
+}
+
 /// PageRank on dependent → prerequisite links: what many concepts rely on scores high.
 pub fn pagerank(ids: &[String], pairs: &[Pair]) -> HashMap<String, f64> {
     const DAMPING: f64 = 0.85;
@@ -68,7 +82,8 @@ pub fn need(target: &str, pairs: &[Pair]) -> HashSet<String> {
 
 /// A learning order for Need(t): prerequisites always come before what relies on them.
 pub fn route(notebook: &Notebook, target: &str) -> Vec<String> {
-    let (_, pairs) = approved(notebook);
+    let (ids, pairs) = prerequisites(notebook);
+    if !ids.iter().any(|id| id == target) { return Vec::new(); }
     let needed = need(target, &pairs);
     let inside: Vec<&Pair> = pairs.iter().filter(|(from, to)| needed.contains(from) && needed.contains(to)).collect();
     fn depth(id: &str, inside: &[&Pair], memo: &mut HashMap<String, usize>, visiting: &mut HashSet<String>) -> usize {

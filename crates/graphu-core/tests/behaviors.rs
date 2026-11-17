@@ -212,7 +212,7 @@ fn graph_queries() {
 
     // The route lists prerequisites before what relies on them.
     let route = graph::route(&notebook, "double integrals");
-    assert_eq!(route, ["limits", "riemann sums", "derivatives", "integrals", "double integrals"]);
+    assert_eq!(route, ["limits", "derivatives", "integrals", "double integrals"]);
 
     let notebook = graphu.set_target(CALC, Some("double integrals")).unwrap();
     assert_eq!(notebook.target.as_deref(), Some("double integrals"));
@@ -476,4 +476,26 @@ fn the_sample_is_sorted_into_topics() {
     // Running it again changes nothing.
     graphu.ensure_samples().unwrap();
     assert_eq!(graphu.get_notebook(CALC).unwrap(), notebook);
+}
+
+#[test]
+fn semantic_edges_remain_visible_without_becoming_prerequisites() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let mut notebook = graphu.get_notebook(CALC).unwrap();
+    // Exercise the real route entry point with legacy persisted graph shapes.
+    for edge in &mut notebook.edges {
+        edge.status = Status::Approved;
+        edge.relation = "CONTRASTS_WITH".into();
+    }
+    for concept in &mut notebook.concepts {
+        concept.status = Status::Approved;
+    }
+    assert!(!graph::approved(&notebook).1.is_empty());
+    assert_eq!(graph::route(&notebook, "double integrals"), ["double integrals"]);
+    assert!(graph::route(&notebook, "missing target").is_empty());
+    for label in ["PART_OF", "PRECEDES", "USES", "extends"] {
+        for edge in &mut notebook.edges { edge.relation = label.into(); }
+        assert_eq!(graph::route(&notebook, "double integrals"), ["double integrals"]);
+    }
 }
