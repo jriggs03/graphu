@@ -225,6 +225,14 @@ impl Graphu {
         let tx = self.conn.transaction()?;
         for notebook in sample::notebooks() {
             if exists(&tx, "SELECT 1 FROM notebooks WHERE id = ?1", params![notebook.id])? {
+                // A sample made before topics existed gets the topics the sample data now has.
+                let concepts = notebook.docs.iter().chain(&notebook.packs).flat_map(|doc| &doc.items)
+                    .filter_map(|item| Some((item.title.as_str(), item.topic.as_deref()?)))
+                    .chain(notebook.manual.concepts.iter().map(|item| (item.title.as_str(), item.topic.as_str())));
+                for (title, topic) in concepts {
+                    tx.execute("UPDATE claims SET topic = ?3 WHERE notebook_id = ?1 AND title_key = ?2 AND target = '' AND topic = ''",
+                        params![notebook.id, key_of(title), crate::ground::topic_path(topic)])?;
+                }
                 continue;
             }
             tx.execute("INSERT INTO notebooks (id, title, updated_at, target) VALUES (?1, ?2, '', ?3)",

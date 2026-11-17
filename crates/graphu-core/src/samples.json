@@ -23,7 +23,8 @@
       "quote": "The derivative of f at x measures the instantaneous rate of change of f.",
       "symbol": "d/dx",
       "heading": "The derivative measures how fast a function is changing at one point.",
-      "snippet": "(f(x+h) − f(x)) / h"
+      "snippet": "(f(x+h) − f(x)) / h",
+      "topic": "Single-variable calculus"
      },
      {
       "title": "Optimization",
@@ -33,7 +34,8 @@
       "quote": "set the derivative equal to zero and check the critical points",
       "symbol": "max",
       "heading": "Optimization finds where a function is largest or smallest.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Single-variable calculus"
      },
      {
       "title": "Optimization",
@@ -50,7 +52,8 @@
       "quote": "A Riemann sum approximates the area under a curve by adding the areas of thin rectangles.",
       "symbol": "Σ",
       "heading": "A Riemann sum estimates an area by adding up thin rectangles.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Single-variable calculus"
      },
      {
       "title": "Integrals",
@@ -60,7 +63,8 @@
       "quote": "The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.",
       "symbol": "∫",
       "heading": "The integral is the exact area you get as the rectangles become infinitely thin.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Single-variable calculus"
      },
      {
       "title": "Integrals",
@@ -84,7 +88,8 @@
       "quote": "the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f",
       "symbol": "FTC",
       "heading": "The fundamental theorem turns an integral into a subtraction of two antiderivative values.",
-      "snippet": "F(b) − F(a)"
+      "snippet": "F(b) − F(a)",
+      "topic": "Single-variable calculus"
      },
      {
       "title": "Fundamental theorem",
@@ -122,7 +127,8 @@
       "quote": "A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant.",
       "symbol": "∂",
       "heading": "A partial derivative changes one variable and holds the others still.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Multivariable calculus"
      },
      {
       "title": "Partial derivatives",
@@ -139,7 +145,8 @@
       "quote": "The gradient of f is the vector of its partial derivatives.",
       "symbol": "∇f",
       "heading": "The gradient points in the direction where the function rises fastest.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Multivariable calculus"
      },
      {
       "title": "Gradient",
@@ -156,7 +163,8 @@
       "quote": "A double integral adds up a function over a region in the plane.",
       "symbol": "∬",
       "heading": "A double integral adds up a function over a region of the plane.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Multivariable calculus"
      },
      {
       "title": "Double integrals",
@@ -173,7 +181,8 @@
       "quote": "A triple integral extends the double integral to a solid region in space.",
       "symbol": "∭",
       "heading": "A triple integral adds up a function over a solid region.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Multivariable calculus"
      },
      {
       "title": "Triple integrals",
@@ -204,7 +213,8 @@
       "quote": "A vector field assigns a vector to every point in the plane or in space.",
       "symbol": "F",
       "heading": "A vector field attaches an arrow to every point.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      },
      {
       "title": "Divergence",
@@ -214,7 +224,8 @@
       "quote": "It measures how much the field spreads out from a point.",
       "symbol": "∇·F",
       "heading": "Divergence measures how much a field spreads out from a point.",
-      "snippet": "∂P/∂x + ∂Q/∂y"
+      "snippet": "∂P/∂x + ∂Q/∂y",
+      "topic": "Vector calculus"
      },
      {
       "title": "Divergence",
@@ -238,7 +249,8 @@
       "quote": "A line integral adds up a vector field along a curve.",
       "symbol": "∮",
       "heading": "A line integral adds up a field along a curve.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      },
      {
       "title": "Line integrals",
@@ -262,7 +274,8 @@
       "quote": "Green's theorem states that the line integral of F around a closed curve C equals the double integral of",
       "symbol": "Green",
       "heading": "Green's theorem trades a line integral around a region for a double integral over it.",
-      "snippet": "∂Q/∂x − ∂P/∂y"
+      "snippet": "∂Q/∂x − ∂P/∂y",
+      "topic": "Vector calculus"
      },
      {
       "title": "Green's theorem",
@@ -286,7 +299,8 @@
       "quote": "a difficult line integral can be traded for a double integral over the enclosed region",
       "symbol": "∬",
       "heading": "",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      },
      {
       "title": "Stokes' theorem",
@@ -296,7 +310,8 @@
       "quote": "Stokes' theorem generalizes Green's theorem to surfaces in space.",
       "symbol": "Stokes",
       "heading": "",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      }
     ]
    }
@@ -320,7 +335,8 @@
       "quote": "Flux is a surface integral: you add up how much of the field passes through each little patch of the surface",
       "symbol": "∯",
       "heading": "A surface integral adds up how much of a field passes through a surface.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      },
      {
       "title": "Surface integrals",
@@ -344,7 +360,8 @@
       "quote": "the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside",
       "symbol": "Gauss",
       "heading": "The divergence theorem turns the flow out of a closed surface into an integral over the solid inside.",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      },
      {
       "title": "Divergence theorem",
@@ -375,7 +392,8 @@
       "quote": "divergence measures how much the field spreads out from a point",
       "symbol": "∇·F",
       "heading": "",
-      "snippet": ""
+      "snippet": "",
+      "topic": "Vector calculus"
      }
     ]
    }
@@ -386,6 +404,7 @@
     {
      "title": "Limits",
      "symbol": "lim",
+     "topic": "Single-variable calculus",
      "comment": "Not in the slides. The professor assumes it from Calc I, so review it before the midterm."
     }
    ],

@@ -1,7 +1,8 @@
 /** The right-hand side of a notebook: concept details, the review queue, and batch history. */
 import { useEffect, useState } from 'react'
 import { api } from './api'
-import type { Batch, Claim, Concept, Edge, Evidence, Notebook, Status } from './api'
+import type { Batch, Claim, Concept, Edge, Evidence, Notebook, Status, Topic } from './api'
+import type { Level, Tree } from './graph/tree'
 import type { Selection } from './graph/GraphView'
 import type { Toast } from './ui'
 
@@ -18,6 +19,12 @@ export type Tools = {
   /** Start drawing a link by hand: the next concept clicked on the map is the other end. */
   startLink: (from: string, as: 'dependent' | 'prerequisite') => void
   notify: (toast: Toast) => void
+  /** Which topic everything sits in. */
+  tree: Tree
+  /** The topic whose map is on screen. `null` is the top level. */
+  level: Level
+  /** Show a topic's map. */
+  open: (level: Level) => void
 }
 
 /**
@@ -80,6 +87,108 @@ function Chip({ concept, pending, tools }: { concept: Concept; pending: boolean;
   </button>
 }
 
+/** Where an item sits: "in Transformers › Positional encoding". Each name opens that topic. */
+function Where({ id, tools }: { id: string; tools: Tools }) {
+  const path = tools.tree.path(id)
+  if (!path.length) return null
+  return <div className="in-topic">in {path.map((key, index) => <span key={key}>
+    {index > 0 && ' › '}<button className="quiet" onClick={() => tools.open(key)}>{tools.tree.label(key)}</button>
+  </span>)}</div>
+}
+
+/** For anything that holds other concepts: how many, a button to open its map, and what is in it. */
+function Inside({ id, tools }: { id: string; tools: Tools }) {
+  const { tree, notebook } = tools
+  if (!tree.isTopic(id)) return null
+  const count = tree.count(id)
+  const status = (key: string) => [...notebook.concepts, ...notebook.topics].find(item => item.id === key)?.status
+  return <div className="inside">
+    <div className="inside-head">
+      <span><b>Topic</b> · {count} concept{count === 1 ? '' : 's'} inside</span>
+      {tools.level === id
+        ? <button onClick={() => tools.open(tree.parent(id))}>↑ Up one level</button>
+        : <button className="primary" onClick={() => tools.open(id)}>Open →</button>}
+    </div>
+    <div className="rel">{tree.children(id).map(key =>
+      <button key={key} className={`chip${status(key) === 'pending' ? ' pending' : ''}`}
+        onClick={() => tools.select({ kind: 'concept', id: key })}>
+        {tree.label(key)}{tree.isTopic(key) && <small>{tree.count(key)}</small>}
+      </button>)}</div>
+  </div>
+}
+
+/**
+ * Move a concept (or a topic) into another topic, a new topic, or out to the top level.
+ * The AI proposes where things go; this is where the student decides.
+ */
+function MoveRow({ id, tools }: { id: string; tools: Tools }) {
+  const { tree, notebook } = tools
+  const [naming, setNaming] = useState(false)
+  const [name, setName] = useState('')
+  useEffect(() => { setNaming(false); setName('') }, [id])
+  // Anything that already holds concepts can receive this one, except itself and what is inside it.
+  const topics = [...notebook.topics, ...notebook.concepts]
+    .filter(item => tree.isTopic(item.id) && item.id !== id && !tree.path(item.id).includes(id))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  const move = (parent: string | null) => void tools.act(() => api.setParent(notebook.id, id, parent))
+  async function intoNew() {
+    const label = name.trim().split(/\s+/).join(' ')
+    const key = label.toLowerCase()
+    if (!label) return
+    const here = tree.parent(id)
+    // The new topic takes this item's place on the map, and the item goes inside it.
+    const ok = await tools.act(async () => {
+      await api.addConcept(notebook.id, label)
+      if (here) await api.setParent(notebook.id, key, here)
+      return api.setParent(notebook.id, id, key)
+    })
+    if (ok) setNaming(false)
+  }
+  return <div className="move">
+    <label className="symbol-edit">Topic
+      <select value={tree.parent(id) ?? ''} aria-label="The topic this sits in"
+        onChange={event => (event.target.value === '+' ? setNaming(true) : move(event.target.value || null))}>
+        <option value="">Top level</option>
+        {topics.map(item => <option key={item.id} value={item.id}>{'– '.repeat(tree.path(item.id).length)}{item.label}</option>)}
+        <option value="+">New topic…</option>
+      </select>
+    </label>
+    {naming && <form className="inline" onSubmit={event => { event.preventDefault(); void intoNew() }}>
+      <input autoFocus value={name} maxLength={80} onChange={event => setName(event.target.value)}
+        placeholder="Name of the new topic" aria-label="Name of the new topic" />
+      <button disabled={!name.trim()}>Move</button>
+    </form>}
+  </div>
+}
+
+/** A topic that is not itself a concept from the material: a named group. */
+export function TopicPanel({ topic, tools }: { topic: Topic; tools: Tools }) {
+  return <div className="detail">
+    <div className="where">Topic</div>
+    <Where id={topic.id} tools={tools} />
+    <h2 className="heading">{topic.label}</h2>
+    {topic.status === 'pending' && <p className="callout new">Everything inside is a new suggestion. The topic joins your graph when you approve something in it.</p>}
+    <p className="lede">A topic groups concepts so a large map can be opened one part at a time. It is a way of organizing, not a claim from your material, so it has no quotes of its own.</p>
+    <Inside id={topic.id} tools={tools} />
+    <MoveRow id={topic.id} tools={tools} />
+  </div>
+}
+
+/** A line between two topics: every link it stands for. */
+export function BundlePanel({ links, tools }: { links: Edge[]; tools: Tools }) {
+  const label = tools.tree.label
+  return <div className="detail">
+    <div className="where">{links.length} links</div>
+    <h2 className="heading">This line stands for {links.length} link{links.length === 1 ? '' : 's'} between concepts inside these topics</h2>
+    <p className="lede">Pick one to see the quotes behind it.</p>
+    <div className="bundle">{links.map(edge =>
+      <button key={edge.id} className={`chip${edge.status === 'pending' ? ' pending' : ''}`}
+        onClick={() => tools.select({ kind: 'edge', id: edge.id })}>
+        {label(edge.from)} <small>{edge.relation}</small> {label(edge.to)}
+      </button>)}</div>
+  </div>
+}
+
 export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tools }) {
   const { notebook, order } = tools
   const byId = new Map(notebook.concepts.map(item => [item.id, item]))
@@ -103,6 +212,7 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
         : <>Not needed for <b>{goal.label}</b></>}</div>
     {/* Order follows docs/design/prototype-autoencoders.html:
         heading → snippet → quotes → Learn first / Used by → I want to learn this. */}
+    <Where id={concept.id} tools={tools} />
     <h3 className="concept-name">{concept.symbol && <code>{concept.symbol}</code>}{concept.label}</h3>
     {concept.heading
       ? <h2 className="heading">{concept.heading} <span className="tag ai">AI summary</span></h2>
@@ -114,6 +224,7 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
       <figcaption>slide {concept.snippet.page} · {concept.snippet.source}</figcaption>
     </figure>}
     <Quotes evidence={concept.evidence} tools={tools} />
+    <Inside id={concept.id} tools={tools} />
 
     <div className="rel"><h3>Learn first</h3>
       {learnFirst.map(edge => <Chip key={edge.id} concept={byId.get(edge.to)!} pending={edge.status === 'pending'} tools={tools} />)}
@@ -148,6 +259,8 @@ export function ConceptPanel({ concept, tools }: { concept: Concept; tools: Tool
           if (event.target.value.trim() !== concept.symbol) void tools.act(() => api.setSymbol(notebook.id, concept.id, event.target.value))
         }} />
     </label>
+
+    <MoveRow id={concept.id} tools={tools} />
 
     <label className="note">Your notes
       <textarea rows={3} value={note} placeholder="Add a comment. Search finds these too."

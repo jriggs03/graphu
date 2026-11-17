@@ -9,7 +9,7 @@
  */
 import { ApiError } from '../api'
 import type {
-  AddResult, Backend, Batch, Claim, Concept, Edge, Evidence, Notebook, NotebookSummary, Source, Status,
+  AddResult, Backend, Batch, Claim, Concept, Edge, Evidence, Notebook, NotebookSummary, Source, Status, Topic,
 } from '../api'
 import { SAMPLE_NOTEBOOKS } from './data'
 import type { Candidate, SampleDoc } from './data'
@@ -18,6 +18,8 @@ type ClaimRec = {
   id: number; batch_id: string; source_id: string | null
   title: string; target: string; relation: string; symbol: string
   page: number; quote: string; status: Status
+  /** Topic path, outermost first: "Unit 2 > Gradients". */
+  topic?: string
 }
 type NotebookRec = {
   id: string; title: string; updated_at: string
@@ -25,6 +27,8 @@ type NotebookRec = {
   comments: Record<string, string>; target: string | null
   /** Symbols the student chose, by concept id. */
   symbols?: Record<string, string>
+  /** Where the student moved things, by concept id. An empty string is the top level. */
+  parents?: Record<string, string>
 }
 type Db = { version: number; seq: number; notebooks: NotebookRec[] }
 
@@ -35,6 +39,12 @@ const VERSION = 1
 
 export const normalize = (value: string) => value.split(/\s+/).filter(Boolean).join(' ')
 export const keyOf = (value: string) => normalize(value).toLowerCase()
+
+/** "  A >  B " → "A > B". At most four levels; a path with an over-long name is dropped. */
+export function topicPath(value: string) {
+  const parts = value.split('>').map(normalize).filter(Boolean).slice(0, 4)
+  return parts.some(part => part.length > 80) ? '' : parts.join(' > ')
+}
 
 export function groundedItems(items: Candidate[], pages: string[]): Candidate[] {
   const text = pages.map(normalize)
@@ -61,11 +71,30 @@ function load(): Db {
   if (db) return db
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Db | null
-    if (saved && saved.version === VERSION) return (db = saved)
+    if (saved && saved.version === VERSION) {
+      backfillTopics(saved)
+      return (db = saved)
+    }
   } catch { /* fall through to a fresh sample */ }
   db = seed()
   save()
   return db
+}
+
+/** Samples saved before topics existed get the topics the sample data now has. */
+function backfillTopics(store: Db) {
+  for (const sample of SAMPLE_NOTEBOOKS) {
+    const notebook = store.notebooks.find(item => item.id === sample.id)
+    if (!notebook) continue
+    const topics = new Map<string, string>()
+    for (const doc of [...sample.docs, ...sample.packs]) {
+      for (const item of doc.items) if (item.topic && !topics.has(keyOf(item.title))) topics.set(keyOf(item.title), item.topic)
+    }
+    for (const item of sample.manual.concepts) if (item.topic) topics.set(keyOf(item.title), item.topic)
+    for (const claim of notebook.claims) {
+      if (!claim.target && claim.topic === undefined) claim.topic = topics.get(keyOf(claim.title)) ?? ''
+    }
+  }
 }
 
 function save() {
@@ -108,6 +137,7 @@ function addItems(store: Db, notebook: NotebookRec, batch: Batch, sourceId: stri
     notebook.claims.push({
       id: ++store.seq, batch_id: batch.id, source_id: sourceId, title: item.title, target: item.target,
       relation: item.relation, symbol: item.symbol ?? '', page: item.page, quote: item.quote, status: 'pending',
+      topic: item.target ? '' : topicPath(item.topic ?? ''),
     })
     count += 1
   }
@@ -138,12 +168,12 @@ function seed(): Db {
     if (sample.manual.concepts.length) {
       const batch = newBatch(store, notebook, { kind: 'manual', name: 'Added by you', context: '' })
       batch.created_at = sample.manual.created_at
-      const manual = (title: string, target: string, symbol: string) => notebook.claims.push({
+      const manual = (title: string, target: string, symbol: string, topic = '') => notebook.claims.push({
         id: ++store.seq, batch_id: batch.id, source_id: null, title, target,
-        relation: target ? 'relies on' : '', symbol, page: 0, quote: '', status: 'approved',
+        relation: target ? 'relies on' : '', symbol, page: 0, quote: '', status: 'approved', topic,
       })
       for (const item of sample.manual.concepts) {
-        manual(item.title, '', item.symbol)
+        manual(item.title, '', item.symbol, topicPath(item.topic ?? ''))
         notebook.comments[keyOf(item.title)] = item.comment
       }
       for (const [from, to] of sample.manual.links) manual(from, to, '')
@@ -169,6 +199,7 @@ function view(notebook: NotebookRec): Notebook {
     !evidence.some(item => status === 'pending' || item.status === 'approved')
 
   const concepts = new Map<string, Concept>()
+  const paths = new Map<string, string[]>()
   for (const claim of live) {
     if (claim.target) continue
     const id = keyOf(claim.title)
@@ -176,7 +207,7 @@ function view(notebook: NotebookRec): Notebook {
     if (!concept) {
       concept = {
         id, label: claim.title, symbol: claim.symbol, status: 'pending', user_added: false,
-        evidence: [], comment: notebook.comments[id] ?? '', visual: null, heading: '', snippet: null,
+        evidence: [], comment: notebook.comments[id] ?? '', visual: null, heading: '', snippet: null, parent: null,
       }
       concepts.set(id, concept)
     }
@@ -186,7 +217,9 @@ function view(notebook: NotebookRec): Notebook {
     }
     if (!concept.symbol) concept.symbol = claim.symbol
     if (claim.source_id) concept.evidence.push(evidenceOf(claim))
+    if (claim.topic && !paths.has(id)) paths.set(id, claim.topic.split(' > '))
   }
+  const topics = nest([...concepts.values()], paths, notebook.parents ?? {})
   for (const concept of concepts.values()) {
     concept.user_added = unsourced(concept.status, concept.evidence)
     const chosen = notebook.symbols?.[concept.id]
@@ -232,10 +265,63 @@ function view(notebook: NotebookRec): Notebook {
   })
 
   return {
-    id: notebook.id, title: notebook.title, concepts: [...concepts.values()], edges: edgeList, claims,
+    id: notebook.id, title: notebook.title, concepts: [...concepts.values()], topics, edges: edgeList, claims,
     batches: notebook.batches, sources: notebook.sources.filter(source => !undone.has(source.batch_id)),
     target: notebook.target && approved(notebook.target) ? notebook.target : null,
   }
+}
+
+/**
+ * Work out which topic each concept sits in. A port of `nest` in crates/graphu-core/src/store.rs.
+ *
+ *   in:  each concept's topic path, plus the moves the student made by hand
+ *   out: `parent` set on every concept, and the topics that are not concepts themselves
+ */
+function nest(concepts: Concept[], paths: Map<string, string[]>, moved: Record<string, string>): Topic[] {
+  const real = new Set(concepts.map(concept => concept.id))
+  let topics: Topic[] = []
+  const parent = new Map<string, string>()
+  for (const concept of concepts) {
+    let above: string | null = null
+    for (const name of paths.get(concept.id) ?? []) {
+      const key = keyOf(name)
+      if (key === concept.id) break // a concept named by its own path is the topic itself
+      if (key === above) continue
+      if (!real.has(key) && !topics.some(topic => topic.id === key)) topics.push({ id: key, label: name, parent: null, status: 'pending' })
+      if (above && !parent.has(key)) parent.set(key, above)
+      above = key
+    }
+    if (above && !parent.has(concept.id)) parent.set(concept.id, above)
+  }
+  const known = (key: string) => real.has(key) || topics.some(topic => topic.id === key)
+  for (const [child, up] of Object.entries(moved)) {
+    if (!known(child)) continue
+    if (!up) parent.delete(child)
+    else if (known(up)) parent.set(child, up)
+  }
+  // Nothing may sit inside itself. A loop is cut at the first item found on it.
+  const keys = [...real, ...topics.map(topic => topic.id)]
+  for (const key of keys) {
+    let current = parent.get(key)
+    for (let step = 0; step < keys.length && current; step++) {
+      if (current === key) { parent.delete(key); break }
+      current = parent.get(current)
+    }
+  }
+  // A topic is kept while a concept sits somewhere inside it, and is in the graph once one of those is.
+  const holds = new Map<string, 'pending' | 'approved'>()
+  for (const concept of concepts) {
+    concept.parent = parent.get(concept.id) ?? null
+    for (let up = concept.parent; up; up = parent.get(up) ?? null) {
+      if (concept.status === 'approved' || !holds.has(up)) holds.set(up, concept.status)
+    }
+  }
+  topics = topics.filter(topic => holds.has(topic.id))
+  for (const topic of topics) {
+    topic.parent = parent.get(topic.id) ?? null
+    topic.status = holds.get(topic.id)!
+  }
+  return topics
 }
 
 function summary(notebook: NotebookRec): NotebookSummary {
@@ -451,6 +537,20 @@ export const sampleBackend: Backend = {
     notebook.symbols = { ...notebook.symbols }
     if (value) notebook.symbols[concept] = value
     else delete notebook.symbols[concept]
+    touch(notebook)
+    return view(notebook)
+  },
+
+  async setParent(id, concept, parent) {
+    const notebook = find(id)
+    const shown = view(notebook)
+    const parentOf = (key: string) => [...shown.concepts, ...shown.topics].find(item => item.id === key)
+    if (!parentOf(concept)) throw new ApiError(404, 'Concept not found.')
+    for (let up = parent || null; up; up = parentOf(up)!.parent) {
+      if (up === concept) throw new ApiError(422, 'A topic cannot be moved inside itself.')
+      if (!parentOf(up)) throw new ApiError(404, 'Topic not found.')
+    }
+    notebook.parents = { ...notebook.parents, [concept]: parent ?? '' }
     touch(notebook)
     return view(notebook)
   },

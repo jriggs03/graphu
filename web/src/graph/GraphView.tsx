@@ -6,8 +6,20 @@ import type { Point } from './model'
 export type GraphNode = {
   id: string; label: string; symbol: string; r: number; tier: number
   pending: boolean; unsourced: boolean; newEvidence: boolean
+  /** Set when other concepts sit inside this one: how many. Drawn with a dotted ring and the number. */
+  inside?: number
+  /** Set on a stand-in for a concept that lives in another topic: where it lives. */
+  ghost?: string
 }
-export type GraphEdge = { id: string; from: string; to: string; pending: boolean; unsourced: boolean; linked?: boolean }
+export type GraphEdge = {
+  id: string; from: string; to: string; pending: boolean; unsourced: boolean; linked?: boolean
+  /** Set when this line stands for several links between two topics: how many. */
+  count?: number
+  /** One end is a stand-in for a concept in another topic. */
+  out?: boolean
+  /** Whether the line is on the "need to know" path. Worked out from its two ends when left unset. */
+  path?: boolean
+}
 export type Selection = { kind: 'concept' | 'edge'; id: string } | null
 
 type Props = {
@@ -28,6 +40,8 @@ type Props = {
   onMoveEnd: () => void
   /** Double-click or right-click: where on screen, where on the map, and which node if any. */
   onMenu: (at: { x: number; y: number; world: Point; node?: string }) => void
+  /** Double-click on a node. Return true when it was handled (a topic was opened). */
+  onOpen?: (id: string) => boolean
   /** Where the student was looking last time. Used once, in place of fitting the whole map. */
   startView?: View | null
   /** Called whenever the student pans or zooms, so the spot can be remembered. */
@@ -89,10 +103,12 @@ const NodeMark = memo(function NodeMark({ node, x, y, look, halo, step }: {
   labelSize *= squeeze
   const block = symbolSize + text.length * labelSize * 1.15
   const top = -block / 2
-  const flag = node.pending ? 'new' : node.unsourced ? 'not in slide !' : ''
+  const flag = node.ghost ? `↗ ${node.ghost}` : node.pending ? 'new' : node.unsourced ? 'not in slide !' : ''
+  const inside = node.inside ? `, a topic with ${node.inside} concept${node.inside === 1 ? '' : 's'} inside` : ''
   return <g data-node={node.id} className={look} tabIndex={0} role="button"
-    aria-label={`${node.label}${flag ? `, ${flag}` : ''}`} transform={`translate(${x} ${y})`}>
+    aria-label={`${node.label}${inside}${flag ? `, ${flag}` : ''}`} transform={`translate(${x} ${y})`}>
     {halo && <circle className="halo" r={node.r + 7} />}
+    {node.inside !== undefined && <circle className="ring" r={node.r + 6} />}
     <circle className="body" r={node.r} />
     {node.symbol && <text className="sym" y={top + symbolSize * 0.82} fontSize={symbolSize.toFixed(1)}>{node.symbol}</text>}
     {text.map((line, index) =>
@@ -101,6 +117,9 @@ const NodeMark = memo(function NodeMark({ node, x, y, look, halo, step }: {
     {node.newEvidence && !node.pending && <circle className="dot" cx={node.r * 0.72} cy={-node.r * 0.72} r={6}>
       <title>New evidence waiting for review</title>
     </circle>}
+    {node.inside !== undefined && <g className="count" transform={`translate(${node.r * 0.76} ${node.r * 0.76})`}>
+      <circle r={11} /><text y={4}>{node.inside}</text>
+    </g>}
     {step !== undefined && <g className="step" transform={`translate(${-node.r * 0.72} ${-node.r * 0.72})`}>
       <circle r={11} /><text y={4}>{step}</text>
     </g>}
@@ -108,16 +127,16 @@ const NodeMark = memo(function NodeMark({ node, x, y, look, halo, step }: {
 })
 
 /** One link. Redrawn only when an end moves or its look changes. */
-const EdgeMark = memo(function EdgeMark({ id, x1, y1, x2, y2, look, arrow, onPath, linked, dim }: {
+const EdgeMark = memo(function EdgeMark({ id, x1, y1, x2, y2, look, arrow, onPath, label, dim }: {
   id: string; x1: number; y1: number; x2: number; y2: number
-  look: string; arrow: string; onPath: boolean; linked: boolean; dim: boolean
+  look: string; arrow: string; onPath: boolean; label: string; dim: boolean
 }) {
   const line = { x1, y1, x2, y2 }
   return <g data-edge={id} className="edge-hit">
     {onPath && <line {...line} className="need-path" />}
     <line {...line} className={look} markerEnd={`url(#arrow-${arrow})`} />
     <line {...line} className="hit" />
-    {linked && <text className={`edge-label${dim ? ' dim' : ''}`} x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 5} textAnchor="middle">2 quotes</text>}
+    {label && <text className={`edge-label${dim ? ' dim' : ''}`} x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 5} textAnchor="middle">{label}</text>}
   </g>
 })
 
@@ -128,6 +147,8 @@ export function GraphView(props: Props) {
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 })
   const fitted = useRef('')
+  // The node tapped last and when, to tell a double-click on a node from two separate taps.
+  const tapped = useRef({ id: '', at: 0 })
   // True once the student has panned or zoomed. Their spot is then kept when the map is resized.
   const touched = useRef(false)
   // Touch: every finger on the map, and the two-finger pinch in progress, if any.
@@ -195,7 +216,8 @@ export function GraphView(props: Props) {
     focusedOn.current = focus.n
     touched.current = true
     setView(prior => {
-      const k = Math.max(prior.k, 0.8)
+      // Close enough to read, not so close that its neighbours fall off the screen.
+      const k = Math.min(Math.max(prior.k, 0.8), 1.15)
       return { k, x: size.w / 2 - point.x * k, y: size.h / 2 - point.y * k }
     })
   }, [focus, positions, size])
@@ -239,14 +261,23 @@ export function GraphView(props: Props) {
         : { kind: 'pan', origin: view, ...start }
   }
 
-  function menu(event: React.MouseEvent<SVGSVGElement>) {
+  function menu(event: React.MouseEvent<SVGSVGElement>, known?: string) {
     event.preventDefault()
     const box = wrap.current!.getBoundingClientRect()
     props.onMenu({
       x: event.clientX, y: event.clientY,
       world: { x: (event.clientX - box.left - view.x) / view.k, y: (event.clientY - box.top - view.y) / view.k },
-      node: (event.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined,
+      node: known ?? (event.target as Element).closest('[data-node]')?.getAttribute('data-node') ?? undefined,
     })
+  }
+
+  /** Double-click: open a topic, or (anywhere else) show the menu. */
+  function open(event: React.MouseEvent<SVGSVGElement>) {
+    // The map captures the pointer, so the event does not say which node was hit. The tap just before does.
+    const node = (event.target as Element).closest('[data-node]')?.getAttribute('data-node')
+      ?? (Date.now() - tapped.current.at < 600 ? tapped.current.id : undefined)
+    if (node && props.onOpen?.(node)) return
+    menu(event, node)
   }
 
   function move(event: ReactPointerEvent<SVGSVGElement>) {
@@ -282,6 +313,13 @@ export function GraphView(props: Props) {
     const current = gesture.current
     gesture.current = null
     if (!current) return
+    const again = current.kind === 'node' && !current.moved && tapped.current.id === current.id && Date.now() - tapped.current.at < 600
+    if (current.kind === 'node' && !current.moved && !again) {
+      props.onSelect({ kind: 'concept', id: current.id })
+      tapped.current = { id: current.id, at: Date.now() }
+      return
+    }
+    if (again) return // the second tap of a double-click: already selected
     if (current.moved) {
       if (current.kind === 'node') props.onMoveEnd()
     } else if (current.kind === 'pan') props.onSelect(null)
@@ -337,12 +375,13 @@ export function GraphView(props: Props) {
       const padB = radius.get(edge.from)! + 4
       const isSelected = selected?.kind === 'edge' && selected.id === edge.id
       const incident = selected?.kind === 'concept' && (edge.from === selected.id || edge.to === selected.id)
-      const onPath = !edge.pending && need.has(edge.from) && need.has(edge.to)
+      const onPath = edge.path ?? (!edge.pending && need.has(edge.from) && need.has(edge.to))
       const dim = matches ? !(matches.has(edge.from) && matches.has(edge.to))
         : selected ? !isSelected && !incident && !onPath : need.size ? !onPath && !edge.pending : false
       const look = ['edge', isSelected && 'sel', incident && 'inc', edge.pending && 'pending',
-        edge.unsourced && 'unsourced', dim && 'dim'].filter(Boolean).join(' ')
-      return <EdgeMark key={edge.id} id={edge.id} look={look} onPath={onPath} linked={Boolean(edge.linked)} dim={dim}
+        edge.unsourced && 'unsourced', edge.out && 'out', dim && 'dim'].filter(Boolean).join(' ')
+      const label = edge.count ? `${edge.count} link${edge.count === 1 ? '' : 's'}` : edge.linked ? '2 quotes' : ''
+      return <EdgeMark key={edge.id} id={edge.id} look={look} onPath={onPath} label={label} dim={dim}
         x1={a.x + dx / length * padA} y1={a.y + dy / length * padA}
         x2={b.x - dx / length * padB} y2={b.y - dy / length * padB}
         arrow={isSelected ? 'accent' : onPath ? 'need' : edge.pending ? 'new' : edge.unsourced ? 'warn' : incident ? 'strong' : 'soft'} />
@@ -354,6 +393,7 @@ export function GraphView(props: Props) {
         selected?.kind === 'concept' && selected.id === node.id && 'sel',
         related.has(node.id) && 'rel', need.has(node.id) && 'need', node.id === target && 'target',
         matches?.has(node.id) && 'match', node.pending && 'pending', node.unsourced && 'unsourced',
+        node.inside !== undefined && 'topic', node.ghost && 'ghost',
         dimNode(node.id) && 'dim'].filter(Boolean).join(' ')
       return <NodeMark key={node.id} node={node} x={point.x} y={point.y} look={look}
         halo={need.has(node.id)} step={steps.get(node.id)} />
@@ -378,7 +418,7 @@ export function GraphView(props: Props) {
   return <div className={view.k < FAR ? 'graph far' : 'graph'} ref={wrap}>
     <div className="paper" style={paper} />
     <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up}
-      onPointerCancel={up} onContextMenu={menu} onDoubleClick={menu} onKeyDown={keyDown} role="group" aria-label="Concept map">
+      onPointerCancel={up} onContextMenu={event => menu(event)} onDoubleClick={open} onKeyDown={keyDown} role="group" aria-label="Concept map">
       <defs>
         {/* One arrowhead per line style. Colors come from the stylesheet (.arrowhead.*). */}
         {['soft', 'strong', 'need', 'accent', 'new', 'warn'].map(kind =>

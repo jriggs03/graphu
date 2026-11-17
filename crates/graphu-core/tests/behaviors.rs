@@ -456,3 +456,24 @@ fn concepts_nest_inside_topics_and_can_be_moved() {
     assert!(graphu.set_parent(&id, "transformers", Some("dropout")).is_err());
     assert!(graphu.set_parent(&id, "dropout", Some("no such topic")).is_err());
 }
+
+/// The built-in calculus sample is sorted into three topics. Opening the workspace again
+/// leaves them exactly as they were.
+#[test]
+fn the_sample_is_sorted_into_topics() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let notebook = graphu.get_notebook(CALC).unwrap();
+    let mut labels: Vec<&str> = notebook.topics.iter().map(|topic| topic.label.as_str()).collect();
+    labels.sort();
+    assert_eq!(labels, ["Multivariable calculus", "Single-variable calculus", "Vector calculus"]);
+    let parent = |key: &str| notebook.concepts.iter().find(|item| item.id == key).unwrap().parent.clone();
+    assert_eq!(parent("gradient").as_deref(), Some("multivariable calculus"));
+    assert_eq!(parent("limits").as_deref(), Some("single-variable calculus"), "the student's own concept has a topic too");
+    assert_eq!(parent("double integrals").as_deref(), Some("multivariable calculus"), "the first document to teach it decides");
+    // Vector calculus is still waiting for review, so its topic is too.
+    assert_eq!(notebook.topics.iter().find(|topic| topic.id == "vector calculus").unwrap().status, Status::Pending);
+    // Running it again changes nothing.
+    graphu.ensure_samples().unwrap();
+    assert_eq!(graphu.get_notebook(CALC).unwrap(), notebook);
+}
