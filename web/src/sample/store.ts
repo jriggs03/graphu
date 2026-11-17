@@ -432,6 +432,10 @@ export const sampleBackend: Backend = {
     return { notebook: view(notebook), results }
   },
 
+  async buildProgress() {
+    return null // nothing is read from files here, so there is nothing to wait for
+  },
+
   async listSamplePacks(id) {
     const notebook = find(id)
     const sample = SAMPLE_NOTEBOOKS.find(item => item.id === id)

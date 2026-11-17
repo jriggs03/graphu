@@ -487,3 +487,50 @@ async fn loose_concepts_get_a_second_look_and_topics_come_through() {
     assert_eq!(prefetching["parent"], Value::Null);
     assert_eq!(call(&app, Method::PUT, &format!("{path}/parent"), Some(json!({ "concept": "cache", "parent": "nope" }))).await.0, StatusCode::NOT_FOUND);
 }
+
+/// While a file is being built, the server says which file and which step it is on.
+///
+///   during the first AI call:   week4.txt, step 2 of 4, "Finding concepts and links"
+///   during the second AI call:  week4.txt, step 4 of 4, "Looking for links the first pass missed"
+///   afterwards:                 nothing is being built
+#[tokio::test]
+async fn an_upload_reports_how_far_along_it_is() {
+    use std::sync::{Arc, Mutex, OnceLock};
+    static APP: OnceLock<Router> = OnceLock::new();
+    let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let record = seen.clone();
+    let claude = Router::new().route("/v1/messages", axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+        let record = record.clone();
+        async move {
+            // Ask the app what it is doing, from inside the AI call it is waiting on.
+            let (_, progress) = call(APP.get().unwrap(), Method::GET, "/api/notebooks/n1/progress", None).await;
+            record.lock().unwrap().push(progress);
+            let payload = if body["system"].as_str().unwrap().starts_with("You propose dependencies") {
+                json!({ "links": [] })
+            } else {
+                let concept = |title: &str, quote: &str| json!({ "title": title, "target": "", "relation": "", "symbol": "", "page": 1, "quote": quote });
+                json!({ "items": [concept("Cache", "A cache keeps frequently used data close."), concept("Locality", "Caches work because programs show locality.")] })
+            };
+            axum::Json(json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": payload.to_string() }] }))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let settings = graphu_ingest::Settings { api_key: Some("test".into()), model: "test".into(),
+        base_url: format!("http://{}", listener.local_addr().unwrap()), transcribe_cmd: None };
+    tokio::spawn(async move { axum::serve(listener, claude).await.unwrap() });
+    let app = APP.get_or_init(|| graphu_server::app(Graphu::in_memory().unwrap(), None, settings));
+
+    let (_, made) = call(app, Method::POST, "/api/notebooks", Some(json!({ "title": "Systems" }))).await;
+    assert_eq!(made["id"], "n1");
+    assert_eq!(call(app, Method::GET, "/api/notebooks/n1/progress", None).await.1, Value::Null);
+    let notes = b"A cache keeps frequently used data close.\nCaches work because programs show locality.".to_vec();
+    assert_eq!(upload(app, "/api/notebooks/n1/documents?name=week4.txt", notes).await.0, StatusCode::OK);
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen[0], json!({ "name": "week4.txt", "step": 2, "of": 4, "label": "Finding concepts and links" }));
+    assert_eq!(seen[1], json!({ "name": "week4.txt", "step": 4, "of": 4, "label": "Looking for links the first pass missed" }));
+    assert_eq!(call(app, Method::GET, "/api/notebooks/n1/progress", None).await.1, Value::Null, "nothing is left behind");
+    // A file that is refused leaves nothing behind either.
+    assert_eq!(upload(app, "/api/notebooks/n1/documents?name=data.bin", vec![0, 1, 2]).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(call(app, Method::GET, "/api/notebooks/n1/progress", None).await.1, Value::Null);
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
 import type { NotebookSummary } from './api'
-import { ContextBox, Settings, describe, useFileDrop } from './ui'
+import { BuildBar, ContextBox, Settings, describe, useFileDrop } from './ui'
 import type { Toast } from './ui'
 import { useUser } from './identity'
 
@@ -14,6 +14,8 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
   const [destination, setDestination] = useState('new')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  // The graphbook being built from the files in the context box, while that is happening.
+  const [building, setBuilding] = useState<{ id: string | null; title: string } | null>(null)
   const [managing, setManaging] = useState<string | null>(null)
 
   /** Run a change to the list, then reload it. Errors are shown, not thrown. */
@@ -59,13 +61,16 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
     setBusy(true)
     try {
       const title = name.trim() || context.trim() || files[0].name.replace(/\.[^.]+$/, '')
+      setBuilding({ id: null, title: destination === 'new' ? title : notebooks.find(notebook => notebook.id === destination)?.title ?? title })
       const id = destination === 'new' ? (await api.createNotebook(title)).id : destination
+      setBuilding(prior => prior && { ...prior, id })
       const { results } = await api.addMaterial(id, files, context)
       notify({ text: describe(results) })
       location.hash = `#/n/${id}`
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : 'Something went wrong.' })
       setBusy(false)
+      setBuilding(null)
     }
   }
 
@@ -121,6 +126,7 @@ export function Home({ notify }: { notify: (toast: Toast) => void }) {
           {notebooks.map(notebook => <option key={notebook.id} value={notebook.id}>{notebook.title}</option>)}
         </select>
       </ContextBox>
+      {building && <BuildBar notebook={building.id} title={building.title} files={files} />}
       {destination === 'new' && <button className="start-blank" disabled={busy} onClick={() => void startBlank()}>
         Start a blank graph
       </button>}

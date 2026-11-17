@@ -136,6 +136,9 @@ export type AddResult = {
   error?: string
 }
 
+/** How far along the file being built is: "week4.pdf, step 2 of 4, Finding concepts and links". */
+export type BuildProgress = { name: string; step: number; of: number; label: string }
+
 export type SamplePack = { id: string; name: string; context: string }
 export type Info = { mode: 'sample' | 'server'; ai_enabled: boolean }
 
@@ -156,6 +159,8 @@ export interface Backend {
   deleteNotebook(id: string): Promise<void>
   getNotebook(id: string): Promise<Notebook>
   addMaterial(id: string, files: File[], context: string): Promise<{ notebook: Notebook; results: AddResult[] }>
+  /** What is being built in this graphbook right now. `null` when nothing is. */
+  buildProgress(id: string): Promise<BuildProgress | null>
   listSamplePacks(id: string): Promise<SamplePack[]>
   addSamplePack(id: string, pack: string): Promise<{ notebook: Notebook; results: AddResult[] }>
   /** `pending` is the per-item undo: it puts a reviewed claim back in the queue. */

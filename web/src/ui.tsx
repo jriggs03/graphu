@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from './api'
-import type { AddResult } from './api'
+import type { AddResult, BuildProgress } from './api'
 import { useSettings } from './settings'
 import { setName, useUser } from './identity'
 
@@ -126,6 +126,56 @@ export function ContextBox(props: {
       <button className="primary" disabled={props.busy || !files.length}>{props.busy ? 'Reading…' : 'Add to graph'}</button>
     </div>
   </form>
+}
+
+const BUILD_STEPS = ['Read the file', 'Find concepts and links', 'Check every quote', 'Find missed links']
+
+/**
+ * The progress bar under the context box: which graphbook is being built, which file it is
+ * on, and which of the four steps that file has reached. The server reports the step; the
+ * bar moves when a step starts, and the clock shows that it is still working in between.
+ *
+ *   Building "Machine Learning"                                   0:42
+ *   ████████████░░░░░░░░░░░░░░░░░░
+ *   File 1 of 2 · 9.1 Attention.pdf · Step 2 of 4: Finding concepts and links
+ */
+export function BuildBar({ notebook, title, files }: { notebook: string | null; title: string; files: File[] }) {
+  const [progress, setProgress] = useState<BuildProgress | null>(null)
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    const started = Date.now()
+    let live = true
+    const tick = async () => {
+      setSeconds(Math.floor((Date.now() - started) / 1000))
+      if (!notebook) return
+      // Between two files the server has nothing to report for a moment: keep the last report.
+      const now = await api.buildProgress(notebook).catch(() => null)
+      if (live && now) setProgress(now)
+    }
+    void tick()
+    const timer = setInterval(() => void tick(), 700)
+    return () => { live = false; clearInterval(timer) }
+  }, [notebook])
+
+  const count = Math.max(files.length, 1)
+  const index = progress ? Math.max(0, files.findIndex(file => file.name === progress.name)) : 0
+  // Each file is an equal share of the bar, and each step an equal share of its file.
+  const done = progress ? (index + (progress.step - 0.5) / progress.of) / count : 0.02
+  const percent = Math.round(done * 100)
+  return <div className="build" role="status">
+    <div className="build-head">
+      <span>Building <b>{title}</b></span>
+      <span className="clock">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</span>
+    </div>
+    <div className="build-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
+      aria-label={`Building ${title}`}><i style={{ width: `${percent}%` }} /></div>
+    <div className="build-now">{progress
+      ? <>{count > 1 && `File ${index + 1} of ${count} · `}{progress.name} · Step {progress.step} of {progress.of}: {progress.label}</>
+      : 'Sending your files…'}</div>
+    <ol className="build-steps">{BUILD_STEPS.map((label, at) =>
+      <li key={label} className={!progress ? '' : at + 1 < progress.step ? 'done' : at + 1 === progress.step ? 'now' : ''}>{label}</li>)}</ol>
+    <small>A long slide deck can take a minute or two. Nothing joins your graph until you approve it.</small>
+  </div>
 }
 
 export function Settings({ onReset }: { onReset: () => void }) {
