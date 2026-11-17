@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS symbols (
     PRIMARY KEY (notebook_id, concept_id)
 );
 CREATE TABLE IF NOT EXISTS extractions (key TEXT PRIMARY KEY, body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS parents (
+    notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, parent_id TEXT NOT NULL,
+    PRIMARY KEY (notebook_id, concept_id)
+);
 CREATE TABLE IF NOT EXISTS comments (
     notebook_id TEXT NOT NULL REFERENCES notebooks(id), concept_id TEXT NOT NULL, text TEXT NOT NULL,
     PRIMARY KEY (notebook_id, concept_id)
@@ -77,6 +81,7 @@ struct ClaimRow {
     symbol: String,
     heading: String,
     snippet: String,
+    topic: String,
     page: i64,
     quote: String,
     status: Status,
@@ -101,8 +106,8 @@ impl Graphu {
                 "This database belongs to the Python backend. Point GRAPHU_DB at a different file.".into()));
         }
         conn.execute_batch(SCHEMA)?;
-        // Databases made before headings and snippets existed gain the two columns here.
-        for column in ["heading", "snippet"] {
+        // Databases made before headings, snippets and topics existed gain the columns here.
+        for column in ["heading", "snippet", "topic"] {
             if !exists(&conn, "SELECT 1 FROM pragma_table_info('claims') WHERE name = ?1", params![column])? {
                 conn.execute_batch(&format!("ALTER TABLE claims ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))?;
             }
@@ -157,7 +162,7 @@ impl Graphu {
         }
         let tx = self.conn.transaction()?;
         require_notebook(&tx, id)?;
-        for table in ["symbols", "visuals", "comments", "claims", "pages", "sources", "batches"] {
+        for table in ["symbols", "visuals", "comments", "parents", "claims", "pages", "sources", "batches"] {
             tx.execute(&format!("DELETE FROM {table} WHERE notebook_id = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
@@ -236,6 +241,8 @@ impl Graphu {
                 let batch = new_batch(&tx, &notebook.id, "manual", "Added by you", "", "", Some(&notebook.manual.created_at))?;
                 for concept in &notebook.manual.concepts {
                     insert_claim(&tx, &notebook.id, batch, None, &concept.title, "", "", &concept.symbol, 0, "", Status::Approved)?;
+                    tx.execute("UPDATE claims SET topic = ?2 WHERE id = ?1",
+                        params![tx.last_insert_rowid(), crate::ground::topic_path(&concept.topic)])?;
                     tx.execute("INSERT INTO comments VALUES (?1, ?2, ?3)",
                         params![notebook.id, key_of(&concept.title), concept.comment])?;
                 }
@@ -475,6 +482,38 @@ impl Graphu {
         self.get_notebook(notebook)
     }
 
+    /// Move a concept (or a topic) into another topic. `None` moves it to the top level.
+    /// The student's choice wins over the topic the AI proposed.
+    pub fn set_parent(&mut self, notebook: &str, concept: &str, parent: Option<&str>) -> Result<Notebook> {
+        let tx = self.conn.transaction()?;
+        let shown = view(&tx, notebook)?;
+        let parent_of = |key: &str| shown.concepts.iter().find(|item| item.id == key).map(|item| item.parent.clone())
+            .or_else(|| shown.topics.iter().find(|item| item.id == key).map(|item| item.parent.clone()));
+        if parent_of(concept).is_none() {
+            return Err(Error::NotFound("Concept not found.".into()));
+        }
+        let parent = parent.filter(|key| !key.is_empty());
+        if let Some(up) = parent {
+            // The new topic must exist and must not be the concept itself or something inside it.
+            let mut current = Some(up.to_string());
+            let mut steps = 0;
+            while let Some(key) = current {
+                if key == concept || steps > shown.concepts.len() + shown.topics.len() {
+                    return Err(Error::Invalid("A topic cannot be moved inside itself.".into()));
+                }
+                let Some(next) = parent_of(&key) else {
+                    return Err(Error::NotFound("Topic not found.".into()));
+                };
+                current = next;
+                steps += 1;
+            }
+        }
+        tx.execute("INSERT OR REPLACE INTO parents VALUES (?1, ?2, ?3)", params![notebook, concept, parent.unwrap_or("")])?;
+        touch(&tx, notebook)?;
+        tx.commit()?;
+        self.get_notebook(notebook)
+    }
+
     /// Set (or clear) the concept the student wants to learn.
     pub fn set_target(&mut self, notebook: &str, concept: Option<&str>) -> Result<Notebook> {
         let tx = self.conn.transaction()?;
@@ -601,8 +640,9 @@ fn add_doc(conn: &Connection, notebook: &str, kind: &str, source_id: &str, name:
         }
         insert_claim(conn, notebook, batch, Some(source_id), &item.title, &item.target, &item.relation,
             item.symbol.as_deref().unwrap_or(""), item.page, &item.quote, Status::Pending)?;
-        conn.execute("UPDATE claims SET heading = ?2, snippet = ?3 WHERE id = ?1", params![
-            conn.last_insert_rowid(), item.heading.as_deref().unwrap_or(""), item.snippet.as_deref().unwrap_or("")])?;
+        conn.execute("UPDATE claims SET heading = ?2, snippet = ?3, topic = ?4 WHERE id = ?1", params![
+            conn.last_insert_rowid(), item.heading.as_deref().unwrap_or(""), item.snippet.as_deref().unwrap_or(""),
+            item.topic.as_deref().unwrap_or("")])?;
         count += 1;
     }
     Ok(AddResult { name: name.into(), batch_id: Some(batch.to_string()), duplicate: false, count, dropped, extracted: true, note: note.into() })
@@ -679,12 +719,12 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
     let name_of = |source: &Option<String>| source.as_ref().and_then(|key| source_name.get(key)).cloned().unwrap_or_default();
 
     let mut statement = conn.prepare(
-        "SELECT id, batch_id, source_id, title, target, relation, symbol, page, quote, status, heading, snippet
+        "SELECT id, batch_id, source_id, title, target, relation, symbol, page, quote, status, heading, snippet, topic
          FROM claims WHERE notebook_id = ?1 ORDER BY id")?;
     let rows: Vec<ClaimRow> = statement.query_map(params![id], |row| Ok(ClaimRow {
         id: row.get(0)?, batch_id: row.get(1)?, source_id: row.get(2)?, title: row.get(3)?, target: row.get(4)?,
         relation: row.get(5)?, symbol: row.get(6)?, page: row.get(7)?, quote: row.get(8)?,
-        heading: row.get(10)?, snippet: row.get(11)?,
+        heading: row.get(10)?, snippet: row.get(11)?, topic: row.get(12)?,
         status: Status::parse(&row.get::<_, String>(9)?),
     }))?.collect::<rusqlite::Result<_>>()?;
 
@@ -729,13 +769,15 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
     // Concepts: one per name, approved as soon as any claim for it is approved.
     let mut concepts: Vec<Concept> = Vec::new();
     let mut at: HashMap<String, usize> = HashMap::new();
+    // The topic path the AI (or the sample) gave each concept, from its first claim that has one.
+    let mut paths: HashMap<String, Vec<String>> = HashMap::new();
     for claim in live.iter().filter(|claim| claim.target.is_empty()) {
         let key = key_of(&claim.title);
         let index = *at.entry(key.clone()).or_insert_with(|| {
             concepts.push(Concept {
                 id: key.clone(), label: claim.title.clone(), symbol: claim.symbol.clone(), status: Status::Pending,
                 user_added: false, evidence: Vec::new(), comment: comments.get(&key).cloned().unwrap_or_default(),
-                visual: visuals.get(&key).cloned(), heading: String::new(), snippet: None,
+                visual: visuals.get(&key).cloned(), heading: String::new(), snippet: None, parent: None,
             });
             concepts.len() - 1
         });
@@ -757,6 +799,9 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
         if claim.source_id.is_some() {
             concept.evidence.push(evidence_of(claim));
         }
+        if !claim.topic.is_empty() {
+            paths.entry(key).or_insert_with(|| claim.topic.split(" > ").map(str::to_string).collect());
+        }
     }
     let mut statement = conn.prepare("SELECT concept_id, symbol FROM symbols WHERE notebook_id = ?1")?;
     let chosen: HashMap<String, String> =
@@ -767,6 +812,10 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
             concept.symbol = symbol.clone();
         }
     }
+    let mut statement = conn.prepare("SELECT concept_id, parent_id FROM parents WHERE notebook_id = ?1")?;
+    let moved: Vec<(String, String)> =
+        statement.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    let topics = nest(&mut concepts, &paths, &moved);
     let approved = |key: &str| at.get(key).is_some_and(|&index| concepts[index].status == Status::Approved);
 
     // Links: one per pair of concepts. In the graph only when approved and both ends are approved.
@@ -824,7 +873,91 @@ fn view(conn: &Connection, id: &str) -> Result<Notebook> {
 
     let target = target.filter(|key| approved(key));
     sources.retain(|source| !undone.contains(&source.batch_id));
-    Ok(Notebook { id: id.to_string(), title, concepts, edges, claims, batches, sources, target })
+    Ok(Notebook { id: id.to_string(), title, concepts, topics, edges, claims, batches, sources, target })
+}
+
+/// Work out which topic each concept sits in.
+///
+/// in:  each concept's topic path ("Transformers > Positional encoding"), plus the moves the
+///      student made by hand (`moved`: concept → new parent, "" for the top level)
+/// out: `parent` set on every concept, and the list of topics that are not concepts themselves
+///
+/// A path names its topics from the outside in. When a name on the path is a concept, that
+/// concept is the topic; otherwise a [`Topic`] is made for it. The student's moves win.
+fn nest(concepts: &mut [Concept], paths: &HashMap<String, Vec<String>>, moved: &[(String, String)]) -> Vec<Topic> {
+    let real: HashSet<String> = concepts.iter().map(|concept| concept.id.clone()).collect();
+    let mut topics: Vec<Topic> = Vec::new();
+    let mut parent: HashMap<String, String> = HashMap::new();
+    for concept in concepts.iter() {
+        let Some(path) = paths.get(&concept.id) else { continue };
+        let mut above: Option<String> = None;
+        for name in path {
+            let key = key_of(name);
+            // A concept named by its own path is the topic itself: "Attention" in "Attention".
+            if key == concept.id {
+                break;
+            }
+            if above.as_deref() == Some(key.as_str()) {
+                continue;
+            }
+            if !real.contains(&key) && !topics.iter().any(|topic| topic.id == key) {
+                topics.push(Topic { id: key.clone(), label: name.clone(), parent: None, status: Status::Pending });
+            }
+            if let Some(up) = &above {
+                parent.entry(key.clone()).or_insert_with(|| up.clone());
+            }
+            above = Some(key);
+        }
+        if let Some(up) = above {
+            parent.entry(concept.id.clone()).or_insert(up);
+        }
+    }
+    let known = |key: &str| real.contains(key) || topics.iter().any(|topic| topic.id == key);
+    for (child, up) in moved {
+        if !known(child) {
+            continue;
+        }
+        if up.is_empty() {
+            parent.remove(child);
+        } else if known(up) {
+            parent.insert(child.clone(), up.clone());
+        }
+    }
+    // Nothing may sit inside itself. A loop is cut at the first item found on it.
+    let keys: Vec<String> = concepts.iter().map(|concept| concept.id.clone())
+        .chain(topics.iter().map(|topic| topic.id.clone())).collect();
+    for key in &keys {
+        let mut current = parent.get(key).cloned();
+        for _ in 0..keys.len() {
+            match current {
+                Some(up) if &up == key => {
+                    parent.remove(key);
+                    break;
+                }
+                Some(up) => current = parent.get(&up).cloned(),
+                None => break,
+            }
+        }
+    }
+    // A topic is kept while a concept sits somewhere inside it, and is in the graph once one of those is.
+    let mut holds: HashMap<String, Status> = HashMap::new();
+    for concept in concepts.iter_mut() {
+        concept.parent = parent.get(&concept.id).cloned();
+        let mut current = concept.parent.clone();
+        while let Some(up) = current {
+            let status = holds.entry(up.clone()).or_insert(Status::Pending);
+            if concept.status == Status::Approved {
+                *status = Status::Approved;
+            }
+            current = parent.get(&up).cloned();
+        }
+    }
+    topics.retain(|topic| holds.contains_key(&topic.id));
+    for topic in &mut topics {
+        topic.parent = parent.get(&topic.id).cloned();
+        topic.status = holds[&topic.id];
+    }
+    topics
 }
 
 /// Match names as tokens, avoiding false matches such as "art" inside "partial".

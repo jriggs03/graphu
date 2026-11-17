@@ -13,6 +13,16 @@ pub fn key_of(value: &str) -> String {
     normalize(value).to_lowercase()
 }
 
+/// Tidy a topic path: "  Transformers >  Positional   encoding " → "Transformers > Positional encoding".
+/// At most four levels are kept, and a path with an over-long name is dropped altogether.
+pub fn topic_path(value: &str) -> String {
+    let parts: Vec<String> = value.split('>').map(normalize).filter(|part| !part.is_empty()).take(4).collect();
+    if parts.iter().any(|part| part.chars().count() > 80) {
+        return String::new();
+    }
+    parts.join(" > ")
+}
+
 /// Keep the candidates whose quote appears on the cited page. Everything else is dropped.
 ///
 /// in:  proposals from the AI, plus the text of each page
@@ -31,6 +41,7 @@ pub fn grounded_items(items: &[Candidate], pages: &[String]) -> Vec<Candidate> {
             symbol: raw.symbol.as_deref().map(normalize).filter(|symbol| !symbol.is_empty()),
             heading: raw.heading.as_deref().map(normalize).filter(|text| !text.is_empty() && length(text) <= 200),
             snippet: raw.snippet.as_deref().map(normalize).filter(|text| !text.is_empty()),
+            topic: raw.topic.as_deref().map(topic_path).filter(|path| !path.is_empty()),
         };
         // The page must exist and the quote must be a sensible length.
         if item.page < 1 || item.page as usize > pages.len() {
@@ -59,6 +70,7 @@ pub fn grounded_items(items: &[Candidate], pages: &[String]) -> Vec<Candidate> {
         }
         if !item.target.is_empty() {
             item.heading = None; // headings describe concepts, not links
+            item.topic = None;
         }
         kept.push(item);
     }
@@ -70,7 +82,7 @@ mod tests {
     use super::*;
 
     fn candidate(title: &str, target: &str, relation: &str, page: i64, quote: &str) -> Candidate {
-        Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
+        Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None, topic: None }
     }
 
     #[test]

@@ -49,6 +49,10 @@ pub struct Candidate {
     /// A formula or line of code copied from the page. Kept only if it really is on the page.
     #[serde(default)]
     pub snippet: Option<String>,
+    /// The part of the material a concept belongs to, outermost first:
+    /// "Transformers > Positional encoding". Organization by the AI, which the student can change.
+    #[serde(default)]
+    pub topic: Option<String>,
 }
 
 /// Cross-note dependency proposal. Source IDs disambiguate pages in different files.
@@ -100,6 +104,19 @@ pub struct Concept {
     pub heading: String,
     /// A formula or line of code found on a cited page.
     pub snippet: Option<Snippet>,
+    /// The topic this concept sits inside: the id of another concept or of a [`Topic`].
+    /// `None` puts it on the top level of the map.
+    pub parent: Option<String>,
+}
+
+/// A named group of concepts that is not itself a concept from the material, such as a
+/// section of a slide deck. It is in the graph as soon as one concept inside it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Topic {
+    pub id: String,
+    pub label: String,
+    pub parent: Option<String>,
+    pub status: Status,
 }
 
 /// A formula or line of code, with the page it was copied from.
@@ -181,6 +198,8 @@ pub struct Notebook {
     pub id: String,
     pub title: String,
     pub concepts: Vec<Concept>,
+    /// Groups that hold concepts. A concept can also act as a topic when others name it as their parent.
+    pub topics: Vec<Topic>,
     pub edges: Vec<Edge>,
     pub claims: Vec<Claim>,
     pub batches: Vec<Batch>,

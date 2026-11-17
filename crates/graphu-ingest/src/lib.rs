@@ -17,7 +17,7 @@ pub mod read;
 use graphu_core::Candidate;
 use read::Kind;
 
-pub use claude::{connect, illustrate, AiError, Illustration};
+pub use claude::{connect, illustrate, unlinked, AiError, Illustration};
 
 /// Largest file accepted.
 pub const MAX_BYTES: usize = 25 * 1024 * 1024;
@@ -109,9 +109,9 @@ async fn transcribe_audio(command: &str, name: &str, bytes: &[u8]) -> Result<Str
 
 /// Turn one file into page text and proposals.
 ///
-/// in:  the file's name and bytes, the student's note about it, the concepts already in the graph
+/// in:  the file's name and bytes, the student's note about it, the concepts and topics already in the graph
 /// out: page text + proposals (not yet grounded), or a note saying why there are none
-pub async fn ingest(settings: &Settings, name: &str, context: &str, known: &[String], bytes: &[u8]) -> Result<Ingested, IngestError> {
+pub async fn ingest(settings: &Settings, name: &str, context: &str, known: &[String], topics: &[String], bytes: &[u8]) -> Result<Ingested, IngestError> {
     let unreadable = |text: &str| Err(IngestError::Unreadable(text.to_string()));
     let has_key = settings.api_key.is_some();
     let mut note = String::new();
@@ -166,6 +166,6 @@ pub async fn ingest(settings: &Settings, name: &str, context: &str, known: &[Str
     if !has_key {
         return Ok(recorded(pages, NO_KEY));
     }
-    let items = claude::extract(settings, context, known, &pages).await?;
+    let items = claude::extract(settings, context, known, topics, &pages).await?;
     Ok(Ingested { pages, items, extracted: true, note })
 }

@@ -208,6 +208,7 @@ pub fn app_with_users(graphu: Graphu, web: Option<PathBuf>, settings: Settings, 
         .route("/notebooks/{id}/comment", put(set_comment))
         .route("/notebooks/{id}/target", put(set_target))
         .route("/notebooks/{id}/symbol", put(set_symbol))
+        .route("/notebooks/{id}/parent", put(set_parent))
         .route("/notebooks/{id}/visual", post(draw_visual))
         .fallback(|| async { Failure(StatusCode::NOT_FOUND, "No such API route.".into()) })
         .layer(DefaultBodyLimit::max(MAX_BYTES))
@@ -270,21 +271,25 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         context: upload.context.unwrap_or_default(),
         ..NewDocument::default()
     };
-    let Json((duplicate, known)) = run(&space, |graphu| {
+    let Json((duplicate, known, topics)) = run(&space, |graphu| {
         let notebook = graphu.get_notebook(&id)?;
+        // Topics already in the graph: the named groups, and the concepts that hold other concepts.
+        let holds = |key: &str| notebook.concepts.iter().any(|concept| concept.parent.as_deref() == Some(key));
+        let topics: Vec<String> = notebook.topics.iter().map(|topic| topic.label.clone())
+            .chain(notebook.concepts.iter().filter(|concept| holds(&concept.id)).map(|concept| concept.label.clone())).collect();
         let known: Vec<String> = notebook.concepts.into_iter().map(|concept| concept.label).collect();
-        Ok((graphu.has_source(&id, &document.source_id)?, known))
+        Ok((graphu.has_source(&id, &document.source_id)?, known, topics))
     })?;
     if !duplicate {
         // The same file, note, existing concepts and model always give the same proposals:
         // the AI's first answer is saved and reused, so a graph can be rebuilt exactly.
-        let key = sha256_hex(serde_json::json!(["v1", document.source_id, document.context, known, state.settings.model]).to_string().as_bytes());
+        let key = sha256_hex(serde_json::json!(["v2", document.source_id, document.context, known, topics, state.settings.model]).to_string().as_bytes());
         let Json(saved) = run(&space, |graphu| graphu.saved_extraction(&key))?;
         let saved: Option<SavedExtraction> = saved.and_then(|body| serde_json::from_str(&body).ok());
         let answer = match saved {
             Some(answer) => answer,
             None => {
-                let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &body).await
+                let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &topics, &body).await
                     .map_err(|error| match error {
                         IngestError::Unreadable(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
                         IngestError::Ai(text) => Failure(StatusCode::BAD_GATEWAY, text),
@@ -306,8 +311,22 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
     let Json(mut result) = run(&space, |graphu| graphu.add_document(&id, document))?;
     if result.extracted && !result.duplicate {
         let Json(snapshot) = run(&space, |graphu| graphu.get_notebook(&id))?;
-        match graphu_ingest::connect(&state.settings, &snapshot, &context).await {
+        // The connection pass is saved the same way as the extraction: the same graphbook, files
+        // and model give the same links again.
+        let key = sha256_hex(serde_json::json!(["connect-v1", context, state.settings.model,
+            snapshot.concepts.iter().map(|concept| &concept.label).collect::<Vec<_>>(),
+            snapshot.edges.iter().map(|edge| &edge.id).collect::<Vec<_>>(),
+            snapshot.sources.iter().map(|source| &source.id).collect::<Vec<_>>()]).to_string().as_bytes());
+        let Json(saved) = run(&space, |graphu| graphu.saved_extraction(&key))?;
+        let saved: Option<Vec<graphu_core::LinkedCandidate>> = saved.and_then(|body| serde_json::from_str(&body).ok());
+        let connected = match saved {
+            Some(links) => Ok(links),
+            None => graphu_ingest::connect(&state.settings, &snapshot, &context).await,
+        };
+        match connected {
             Ok(links) => {
+                let body = serde_json::to_string(&links).unwrap_or_default();
+                let Json(()) = run(&space, |graphu| graphu.save_extraction(&key, &body))?;
                 if let Some(batch) = &result.batch_id {
                     let Json(count) = run(&space, |graphu| graphu.add_linked(&id, batch, &links))?;
                     result.count += count;
@@ -319,7 +338,7 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
                 };
                 // The upload is already saved. A failed connection pass must not disguise
                 // that success or invite an upload retry which is then rejected as a duplicate.
-                let note = format!("{} Notes saved; cross-note connections were not completed: {}", result.note, detail);
+                let note = format!("{} Notes saved; the pass that looks for more connections was not completed: {}", result.note, detail);
                 result.note = note.trim().to_string();
                 if let Some(batch) = &result.batch_id {
                     let _ = run(&space, |graphu| graphu.set_batch_note(&id, batch, &result.note))?;
@@ -377,6 +396,17 @@ struct Symbol {
 
 async fn set_symbol(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Symbol>) -> Reply<Notebook> {
     run(&space, |graphu| graphu.set_symbol(&id, &body.concept, &body.symbol))
+}
+
+#[derive(Deserialize)]
+struct Parent {
+    concept: String,
+    parent: Option<String>,
+}
+
+/// Move a concept into a topic, or out to the top level.
+async fn set_parent(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Parent>) -> Reply<Notebook> {
+    run(&space, |graphu| graphu.set_parent(&id, &body.concept, body.parent.as_deref()))
 }
 
 async fn set_target(Workspace(space): Workspace, Path(id): Path<String>, Json(body): Json<Target>) -> Reply<Notebook> {
