@@ -10,7 +10,7 @@ import { tree } from './graph/tree'
 import type { Level } from './graph/tree'
 import { BundlePanel, ConceptPanel, EdgePanel, HistoryPanel, ReviewPanel, TopicPanel, claimText } from './Panels'
 import type { Tools } from './Panels'
-import { ContextBox, Icon, Settings, describe, useFileDrop } from './ui'
+import { BuildBar, ContextBox, Icon, Settings, describe, useFileDrop } from './ui'
 import type { Toast } from './ui'
 
 type Mode = 'detail' | 'review' | 'history'
@@ -524,7 +524,9 @@ function AddDialog(props: {
       <header><h2>Add to {notebook.title}</h2><button className="quiet" aria-label="Close" onClick={props.close}>×</button></header>
       <ContextBox context={context} setContext={setContext} files={props.files} setFiles={props.setFiles} busy={busy}
         onSubmit={() => void add(() => api.addMaterial(notebook.id, props.files, context))} />
-      <p className="hint">You can also drop files anywhere on the graph.</p>
+      {busy && props.files.length > 0
+        ? <BuildBar notebook={notebook.id} title={notebook.title} files={props.files} />
+        : <p className="hint">You can also drop files anywhere on the graph.</p>}
 
       {packs.length > 0 && <section>
         <h3>Sample material</h3>

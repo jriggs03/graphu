@@ -455,3 +455,23 @@ html[data-theme="dark"] .node .count text { fill: #1c1b19; }
 .legend .swatch.topic { background: var(--node); border: 1.5px dotted var(--edge-strong); }
 .legend .swatch.ghost { background: var(--panel); border: 1.5px dashed var(--edge-strong); }
 @media (max-width: 900px) { .crumbs { flex-wrap: wrap; } }
+
+/* ---------- the progress bar under the context box ---------- */
+.build { width: min(640px, 100%); display: grid; gap: 8px; font-size: 14px; text-align: left; }
+.sheet .build { width: 100%; }
+.build-head { display: flex; justify-content: space-between; gap: 12px; }
+.build-head b { font-weight: 650; }
+.build .clock { font-family: var(--mono); color: var(--muted); }
+.build-track { height: 8px; border-radius: 999px; background: var(--node); overflow: hidden; }
+.build-track i { display: block; height: 100%; min-width: 8px; border-radius: 999px; background: var(--accent);
+  background-image: linear-gradient(90deg, transparent 0, rgba(255, 255, 255, .35) 50%, transparent 100%);
+  background-size: 120px 100%; background-repeat: no-repeat; transition: width .6s ease; animation: build-shine 1.6s linear infinite; }
+@keyframes build-shine { from { background-position: -120px 0; } to { background-position: 640px 0; } }
+@media (prefers-reduced-motion: reduce) { .build-track i { animation: none; } }
+.build-now { overflow-wrap: anywhere; }
+.build-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 12.5px; }
+.build-steps li::before { content: "○ "; }
+.build-steps li.done::before { content: "✓ "; color: var(--need-ink, var(--accent)); }
+.build-steps li.now { color: var(--ink); font-weight: 600; }
+.build-steps li.now::before { content: "● "; color: var(--accent); }
+.build small { color: var(--muted); }

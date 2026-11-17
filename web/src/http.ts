@@ -52,6 +52,7 @@ export const httpBackend: Backend = {
     return { notebook: notebook ?? await this.getNotebook(id), results }
   },
 
+  buildProgress: id => request('GET', `${at(id)}/progress`),
   listSamplePacks: id => request('GET', `${at(id)}/sample-packs`),
   addSamplePack: (id, pack) => request('POST', `${at(id)}/sample-packs/${encodeURIComponent(pack)}`),
   reviewClaim: (id, claim, status) => request('PATCH', `${at(id)}/claims/${claim}`, { status }),

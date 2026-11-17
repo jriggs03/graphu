@@ -107,11 +107,26 @@ async fn transcribe_audio(command: &str, name: &str, bytes: &[u8]) -> Result<Str
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// The stages one file goes through, in order. The server shows these to the student as progress.
+pub const STAGES: [&str; 4] = [
+    "Reading the file",
+    "Finding concepts and links",
+    "Checking every quote against its page",
+    "Looking for links the first pass missed",
+];
+
 /// Turn one file into page text and proposals.
 ///
 /// in:  the file's name and bytes, the student's note about it, the concepts and topics already in the graph
 /// out: page text + proposals (not yet grounded), or a note saying why there are none
 pub async fn ingest(settings: &Settings, name: &str, context: &str, known: &[String], topics: &[String], bytes: &[u8]) -> Result<Ingested, IngestError> {
+    ingest_with(settings, name, context, known, topics, bytes, &|_| ()).await
+}
+
+/// [`ingest`], reporting each stage as it starts: `stage(0)` reading, `stage(1)` finding concepts.
+pub async fn ingest_with(settings: &Settings, name: &str, context: &str, known: &[String], topics: &[String], bytes: &[u8],
+    stage: &(dyn Fn(usize) + Send + Sync)) -> Result<Ingested, IngestError> {
+    stage(0);
     let unreadable = |text: &str| Err(IngestError::Unreadable(text.to_string()));
     let has_key = settings.api_key.is_some();
     let mut note = String::new();
@@ -166,6 +181,7 @@ pub async fn ingest(settings: &Settings, name: &str, context: &str, known: &[Str
     if !has_key {
         return Ok(recorded(pages, NO_KEY));
     }
+    stage(1);
     let items = claude::extract(settings, context, known, topics, &pages).await?;
     Ok(Ingested { pages, items, extracted: true, note })
 }

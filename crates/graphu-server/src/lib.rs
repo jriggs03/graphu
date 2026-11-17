@@ -48,6 +48,42 @@ pub struct AppState {
     users: Option<Users>,
     /// Where the AI lives (key, model). Fixed when the server starts.
     settings: Settings,
+    /// What is being built right now, by workspace and graphbook. Shown as the progress bar.
+    building: Mutex<HashMap<(usize, String), Progress>>,
+}
+
+/// How far along one upload is: "week4.pdf, step 2 of 4, Finding concepts and links".
+#[derive(Serialize, Clone)]
+struct Progress {
+    name: String,
+    step: usize,
+    of: usize,
+    label: &'static str,
+}
+
+/// Reports the stages of one upload, and clears the report when the upload ends, however it ends.
+struct Reporter {
+    state: Shared,
+    key: (usize, String),
+    name: String,
+}
+
+impl Reporter {
+    fn stage(&self, index: usize) {
+        let progress = Progress { name: self.name.clone(), step: index + 1, of: graphu_ingest::STAGES.len(), label: graphu_ingest::STAGES[index] };
+        self.state.building.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(self.key.clone(), progress);
+    }
+}
+
+impl Drop for Reporter {
+    fn drop(&mut self) {
+        self.state.building.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&self.key);
+    }
+}
+
+/// A workspace's place in the progress table: each person's workspace is one shared object.
+fn space_key(space: &Space) -> usize {
+    Arc::as_ptr(space) as usize
 }
 
 type Shared = Arc<AppState>;
@@ -198,6 +234,7 @@ pub fn app_with_users(graphu: Graphu, web: Option<PathBuf>, settings: Settings, 
         .route("/notebooks", get(list_notebooks).post(create_notebook))
         .route("/notebooks/{id}", get(get_notebook).patch(rename_notebook).delete(delete_notebook))
         .route("/notebooks/{id}/documents", post(add_document))
+        .route("/notebooks/{id}/progress", get(progress))
         .route("/notebooks/{id}/sample-packs", get(list_sample_packs))
         .route("/notebooks/{id}/sample-packs/{pack}", post(add_sample_pack))
         .route("/notebooks/{id}/claims/{claim}", patch(review_claim))
@@ -214,6 +251,7 @@ pub fn app_with_users(graphu: Graphu, web: Option<PathBuf>, settings: Settings, 
         .layer(DefaultBodyLimit::max(MAX_BYTES))
         .with_state(Arc::new(AppState {
             shared: Arc::new(Mutex::new(graphu)), open: Mutex::new(HashMap::new()), users, settings,
+            building: Mutex::new(HashMap::new()),
         }));
     let router = Router::new().nest("/api", api);
     match web {
@@ -247,6 +285,12 @@ async fn get_notebook(Workspace(space): Workspace, Path(id): Path<String>) -> Re
     run(&space, |graphu| graphu.get_notebook(&id))
 }
 
+/// What is being built in this graphbook right now, or `null` when nothing is.
+async fn progress(State(state): State<Shared>, Workspace(space): Workspace, Path(id): Path<String>) -> Json<Option<Progress>> {
+    let building = state.building.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    Json(building.get(&(space_key(&space), id)).cloned())
+}
+
 /// The AI's answer for one file, kept so that the same input gives the same graph.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SavedExtraction {
@@ -271,6 +315,8 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         context: upload.context.unwrap_or_default(),
         ..NewDocument::default()
     };
+    let reporter = Reporter { state: state.clone(), key: (space_key(&space), id.clone()), name: document.name.clone() };
+    reporter.stage(0);
     let Json((duplicate, known, topics)) = run(&space, |graphu| {
         let notebook = graphu.get_notebook(&id)?;
         // Topics already in the graph: the named groups, and the concepts that hold other concepts.
@@ -289,7 +335,8 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         let answer = match saved {
             Some(answer) => answer,
             None => {
-                let ingested = graphu_ingest::ingest(&state.settings, &document.name, &document.context, &known, &topics, &body).await
+                let ingested = graphu_ingest::ingest_with(&state.settings, &document.name, &document.context, &known, &topics, &body,
+                    &|stage| reporter.stage(stage)).await
                     .map_err(|error| match error {
                         IngestError::Unreadable(text) => Failure(StatusCode::UNPROCESSABLE_ENTITY, text),
                         IngestError::Ai(text) => Failure(StatusCode::BAD_GATEWAY, text),
@@ -308,8 +355,10 @@ async fn add_document(State(state): State<Shared>, Workspace(space): Workspace, 
         document.note = answer.note;
     }
     let context = document.context.clone();
+    reporter.stage(2);
     let Json(mut result) = run(&space, |graphu| graphu.add_document(&id, document))?;
     if result.extracted && !result.duplicate {
+        reporter.stage(3);
         let Json(snapshot) = run(&space, |graphu| graphu.get_notebook(&id))?;
         // The connection pass is saved the same way as the extraction: the same graphbook, files
         // and model give the same links again.
