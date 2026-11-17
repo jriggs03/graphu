@@ -115,7 +115,10 @@ export function searchIndex(notebook: Notebook): SearchIndex {
       add(`${item.source} p. ${item.page}`, pages.get(item.source_id)?.[item.page - 1])
     }
     return { id: concept.id, label: concept.label, name: fold(concept.label), fields }
-  })
+  }).concat(notebook.topics.map(topic => ({
+    // A topic that is not itself a concept can be found by its name.
+    id: topic.id, label: topic.label, name: fold(topic.label), fields: [{ kind: 'Name', text: topic.label, folded: fold(topic.label) }],
+  })))
 }
 
 /**

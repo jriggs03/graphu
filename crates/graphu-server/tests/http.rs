@@ -409,3 +409,81 @@ async fn uploads_connect_across_files_and_keep_uploads_when_connect_fails() {
     assert!(prompt.contains("week1") && prompt.contains("week2") && prompt.contains(a) && prompt.contains(b));
     assert!(connect["system"].as_str().unwrap().contains("untrusted data"));
 }
+
+/// One file, with a concept the first pass left unlinked: the connection pass is asked about it,
+/// its two-quote link joins the review queue, and topics come through. All of it is repeatable.
+///
+///   extraction: Cache, Locality, Prefetching (no link)   topic: "Memory"
+///   connection: Prefetching relies on Cache   (one quote uses "cache", one explains it)
+#[tokio::test]
+async fn loose_concepts_get_a_second_look_and_topics_come_through() {
+    use std::sync::{Arc, Mutex};
+    let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let record = requests.clone();
+    let claude = Router::new().route("/v1/messages", axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+        let record = record.clone();
+        async move {
+            record.lock().unwrap().push(body.clone());
+            let payload = if body["system"].as_str().unwrap().starts_with("You propose dependencies") {
+                let data: Value = serde_json::from_str(body["messages"][0]["content"][0]["text"].as_str().unwrap()).unwrap();
+                let source = &data["sources"][0]["source_id"];
+                json!({ "links": [{ "title": "Prefetching", "target": "Cache", "relation": "fills",
+                    "source_a": source, "page_a": 1, "quote_a": "Prefetching fills the cache before the data is asked for.",
+                    "source_b": source, "page_b": 1, "quote_b": "A cache keeps frequently used data close." }] })
+            } else {
+                let concept = |title: &str, quote: &str| json!({ "title": title, "target": "", "relation": "", "symbol": "",
+                    "topic": "Memory", "page": 1, "quote": quote });
+                json!({ "items": [
+                    concept("Cache", "A cache keeps frequently used data close."),
+                    concept("Locality", "Caches work because programs show locality."),
+                    concept("Prefetching", "Prefetching fills the cache before the data is asked for."),
+                    { "title": "Cache", "target": "Locality", "relation": "relies on", "symbol": "", "topic": "", "page": 1,
+                      "quote": "Caches work because programs show locality." },
+                ] })
+            };
+            axum::Json(json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": payload.to_string() }] }))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let settings = graphu_ingest::Settings { api_key: Some("test".into()), model: "test".into(),
+        base_url: format!("http://{}", listener.local_addr().unwrap()), transcribe_cmd: None };
+    tokio::spawn(async move { axum::serve(listener, claude).await.unwrap() });
+    let app = graphu_server::app(Graphu::in_memory().unwrap(), None, settings);
+    let notes = b"A cache keeps frequently used data close.\nCaches work because programs show locality.\nPrefetching fills the cache before the data is asked for.".to_vec();
+
+    let (_, made) = call(&app, Method::POST, "/api/notebooks", Some(json!({ "title": "Systems" }))).await;
+    let path = format!("/api/notebooks/{}", made["id"].as_str().unwrap());
+    let (status, added) = upload(&app, &format!("{path}/documents?name=week4.txt"), notes.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(added["results"][0]["count"], 5, "three concepts, one stated link, one two-quote link");
+    let notebook = &added["notebook"];
+    let edge = notebook["edges"].as_array().unwrap().iter().find(|edge| edge["id"] == "prefetching->cache").unwrap();
+    assert_eq!((edge["evidence_kind"].as_str(), edge["status"].as_str()), (Some("linked"), Some("pending")));
+    // The connection pass was told which concept had no link.
+    {
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        let asked: Value = serde_json::from_str(requests[1]["messages"][0]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(asked["concepts_without_links"], json!(["Prefetching"]));
+        assert!(requests[0]["messages"][0]["content"][0]["text"].as_str().unwrap().contains("<known_topics>[]</known_topics>"));
+    }
+    // Every concept sits in the topic the AI named, and the topic is listed once.
+    assert!(notebook["concepts"].as_array().unwrap().iter().all(|concept| concept["parent"] == "memory"));
+    assert_eq!(notebook["topics"], json!([{ "id": "memory", "label": "Memory", "parent": null, "status": "pending" }]));
+
+    // The same file in a new graphbook: the same concepts and links, and Claude is not asked again.
+    let (_, second) = call(&app, Method::POST, "/api/notebooks", Some(json!({ "title": "Again" }))).await;
+    let other = format!("/api/notebooks/{}", second["id"].as_str().unwrap());
+    let (_, rebuilt) = upload(&app, &format!("{other}/documents?name=week4.txt"), notes).await;
+    let shape = |claims: &Value| claims.as_array().unwrap().iter()
+        .map(|claim| (claim["title"].to_string(), claim["target"].to_string(), claim["quote"].to_string())).collect::<Vec<_>>();
+    assert_eq!(shape(&rebuilt["notebook"]["claims"]), shape(&notebook["claims"]));
+    assert_eq!(requests.lock().unwrap().len(), 2, "same input, same graph, no new AI call");
+
+    // The student moves a concept out of the topic, over HTTP.
+    let (status, moved) = call(&app, Method::PUT, &format!("{path}/parent"), Some(json!({ "concept": "prefetching", "parent": null }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let prefetching = moved["concepts"].as_array().unwrap().iter().find(|concept| concept["id"] == "prefetching").unwrap();
+    assert_eq!(prefetching["parent"], Value::Null);
+    assert_eq!(call(&app, Method::PUT, &format!("{path}/parent"), Some(json!({ "concept": "cache", "parent": "nope" }))).await.0, StatusCode::NOT_FOUND);
+}

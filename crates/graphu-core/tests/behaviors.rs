@@ -6,11 +6,11 @@ use graphu_core::graph;
 use graphu_core::{sha256_hex, Candidate, ClaimKind, Error, Graphu, NewDocument, Notebook, Status};
 
 fn concept(title: &str, page: i64, quote: &str) -> Candidate {
-    Candidate { title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
+    Candidate { title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None, heading: None, snippet: None, topic: None }
 }
 
 fn link(title: &str, target: &str, relation: &str, page: i64, quote: &str) -> Candidate {
-    Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None }
+    Candidate { title: title.into(), target: target.into(), relation: relation.into(), page, quote: quote.into(), symbol: None, heading: None, snippet: None, topic: None }
 }
 
 fn document(name: &str, text: &str, items: Vec<Candidate>) -> NewDocument {
@@ -335,7 +335,7 @@ fn a_snippet_is_kept_only_if_it_is_on_the_cited_page() {
     ];
     let item = |title: &str, page: i64, quote: &str, heading: &str, snippet: &str| Candidate {
         title: title.into(), target: String::new(), relation: String::new(), page, quote: quote.into(), symbol: None,
-        heading: Some(heading.into()), snippet: Some(snippet.into()),
+        heading: Some(heading.into()), snippet: Some(snippet.into()), topic: None,
     };
     let items = vec![
         // Copied from page 1, with different spacing: kept after whitespace normalization.
@@ -411,4 +411,69 @@ fn the_sample_shows_headings_and_only_snippets_that_are_on_the_page() {
     let with_snippet: Vec<&str> = notebook.concepts.iter().filter(|c| c.snippet.is_some()).map(|c| c.id.as_str()).collect();
     assert_eq!(with_snippet, ["derivatives", "fundamental theorem", "divergence", "green's theorem"]);
     assert!(notebook.concepts.iter().find(|c| c.id == "limits").unwrap().heading.is_empty(), "the student's own concept has no AI summary");
+}
+
+/// Topics: a concept sits inside the topic its path names, to any depth, and the student can move it.
+///
+///   in:  "Sine waves" with topic "Transformers > Positional encoding"
+///   out: Sine waves → Positional encoding → Transformers (a concept that acts as a topic)
+#[test]
+fn concepts_nest_inside_topics_and_can_be_moved() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    let id = graphu.create_notebook("Deep learning").unwrap().id;
+    let pages = vec!["Transformers stack attention layers. Positions are added with sine waves of many lengths. Dropout hides units at random.".to_string()];
+    let inside = |title: &str, quote: &str, topic: &str| Candidate { topic: Some(topic.into()), ..concept(title, 1, quote) };
+    let items = vec![
+        inside("Transformers", "Transformers stack attention layers.", "Transformers"),
+        inside("Sine waves", "Positions are added with sine waves", "Transformers >  Positional encoding"),
+        concept("Dropout", 1, "Dropout hides units at random."),
+    ];
+    graphu.add_document(&id, NewDocument { source_id: "d".into(), name: "dl.pdf".into(), pages, items, extracted: true, ..NewDocument::default() }).unwrap();
+    let parent_of = |notebook: &Notebook, key: &str| notebook.concepts.iter().find(|item| item.id == key).unwrap().parent.clone();
+
+    let notebook = graphu.get_notebook(&id).unwrap();
+    assert_eq!(parent_of(&notebook, "sine waves").as_deref(), Some("positional encoding"));
+    assert_eq!(parent_of(&notebook, "transformers"), None, "a concept named by its own topic is that topic");
+    assert_eq!(parent_of(&notebook, "dropout"), None);
+    // "Positional encoding" is not a concept from the material, so it is listed as a topic.
+    assert_eq!(notebook.topics.len(), 1);
+    assert_eq!((notebook.topics[0].label.as_str(), notebook.topics[0].parent.as_deref(), notebook.topics[0].status),
+        ("Positional encoding", Some("transformers"), Status::Pending));
+    assert_eq!(notebook.concepts.len(), 3, "topics are not counted as concepts");
+
+    // The topic is in the graph as soon as something inside it is approved.
+    let claim = notebook.claims.iter().find(|claim| claim.title == "Sine waves").unwrap().id;
+    let notebook = graphu.review_claim(&id, claim, Status::Approved).unwrap();
+    assert_eq!(notebook.topics[0].status, Status::Approved);
+
+    // The student decides: move Dropout into Transformers, then take Sine waves out to the top.
+    let notebook = graphu.set_parent(&id, "dropout", Some("transformers")).unwrap();
+    assert_eq!(parent_of(&notebook, "dropout").as_deref(), Some("transformers"));
+    let notebook = graphu.set_parent(&id, "sine waves", None).unwrap();
+    assert_eq!(parent_of(&notebook, "sine waves"), None);
+    assert!(notebook.topics.is_empty(), "an empty topic is not shown");
+    // Nothing can be put inside itself, directly or through its own contents.
+    assert!(graphu.set_parent(&id, "transformers", Some("dropout")).is_err());
+    assert!(graphu.set_parent(&id, "dropout", Some("no such topic")).is_err());
+}
+
+/// The built-in calculus sample is sorted into three topics. Opening the workspace again
+/// leaves them exactly as they were.
+#[test]
+fn the_sample_is_sorted_into_topics() {
+    let mut graphu = Graphu::in_memory().unwrap();
+    graphu.ensure_samples().unwrap();
+    let notebook = graphu.get_notebook(CALC).unwrap();
+    let mut labels: Vec<&str> = notebook.topics.iter().map(|topic| topic.label.as_str()).collect();
+    labels.sort();
+    assert_eq!(labels, ["Multivariable calculus", "Single-variable calculus", "Vector calculus"]);
+    let parent = |key: &str| notebook.concepts.iter().find(|item| item.id == key).unwrap().parent.clone();
+    assert_eq!(parent("gradient").as_deref(), Some("multivariable calculus"));
+    assert_eq!(parent("limits").as_deref(), Some("single-variable calculus"), "the student's own concept has a topic too");
+    assert_eq!(parent("double integrals").as_deref(), Some("multivariable calculus"), "the first document to teach it decides");
+    // Vector calculus is still waiting for review, so its topic is too.
+    assert_eq!(notebook.topics.iter().find(|topic| topic.id == "vector calculus").unwrap().status, Status::Pending);
+    // Running it again changes nothing.
+    graphu.ensure_samples().unwrap();
+    assert_eq!(graphu.get_notebook(CALC).unwrap(), notebook);
 }

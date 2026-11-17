@@ -16,6 +16,8 @@ export type Candidate = {
   heading?: string
   /** A formula copied from the cited page. Dropped by grounding if it is not there. */
   snippet?: string
+  /** The part of the material the concept belongs to, outermost first: "Unit 2 > Gradients". */
+  topic?: string
 }
 
 export type SampleDoc = {
@@ -34,6 +36,10 @@ const concept = (title: string, symbol: string, page: number, quote: string, hea
 const link = (title: string, target: string, page: number, quote: string, relation = 'relies on'): Candidate =>
   ({ title, target, relation, page, quote })
 
+/** Put every concept of one document in the same topic. Links have no topic. */
+const inTopic = (topic: string, items: Candidate[]): Candidate[] =>
+  items.map(item => (item.target ? item : { ...item, topic }))
+
 const review: SampleDoc = {
   id: 'sample-calc-review',
   name: 'Calc I review notes.pdf',
@@ -45,7 +51,7 @@ const review: SampleDoc = {
     'A Riemann sum approximates the area under a curve by adding the areas of thin rectangles. The definite integral is the limit of Riemann sums as the rectangles become infinitely thin.',
     'The fundamental theorem of calculus states that the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f. It connects the derivative and the integral as inverse operations. Evaluating an integral this way requires knowing how to differentiate, since you must recognize F from its derivative.',
   ],
-  items: [
+  items: inTopic('Single-variable calculus', [
     concept('Derivatives', 'd/dx', 1, 'The derivative of f at x measures the instantaneous rate of change of f.',
       'The derivative measures how fast a function is changing at one point.', '(f(x+h) − f(x)) / h'),
     concept('Optimization', 'max', 1, 'set the derivative equal to zero and check the critical points',
@@ -61,7 +67,7 @@ const review: SampleDoc = {
       'The fundamental theorem turns an integral into a subtraction of two antiderivative values.', 'F(b) − F(a)'),
     link('Fundamental theorem', 'Integrals', 3, 'the integral of f from a to b equals F(b) − F(a), where F is any antiderivative of f'),
     link('Fundamental theorem', 'Derivatives', 3, 'It connects the derivative and the integral as inverse operations.', 'connects'),
-  ],
+  ]),
 }
 
 const week6: SampleDoc = {
@@ -75,7 +81,7 @@ const week6: SampleDoc = {
     'The gradient of f is the vector of its partial derivatives. It points in the direction of steepest increase.',
     'A double integral adds up a function over a region in the plane. It is evaluated as an iterated integral: integrate with respect to one variable, then the other. A triple integral extends the double integral to a solid region in space.',
   ],
-  items: [
+  items: inTopic('Multivariable calculus', [
     concept('Partial derivatives', '∂', 1, 'A partial derivative differentiates a function of several variables with respect to one variable while holding the others constant.',
       'A partial derivative changes one variable and holds the others still.'),
     link('Partial derivatives', 'Derivatives', 1, 'Computing a partial derivative uses the same rules as the ordinary derivative.'),
@@ -88,7 +94,7 @@ const week6: SampleDoc = {
     concept('Triple integrals', '∭', 3, 'A triple integral extends the double integral to a solid region in space.',
       'A triple integral adds up a function over a solid region.'),
     link('Triple integrals', 'Double integrals', 3, 'A triple integral extends the double integral to a solid region in space.', 'extends'),
-  ],
+  ]),
 }
 
 const week9: SampleDoc = {
@@ -102,7 +108,7 @@ const week9: SampleDoc = {
     'A line integral adds up a vector field along a curve. It is computed by parametrizing the curve and evaluating an ordinary integral in the parameter t.',
     "Green's theorem states that the line integral of F around a closed curve C equals the double integral of ∂Q/∂x − ∂P/∂y over the region D enclosed by C. Using Green's theorem, a difficult line integral can be traded for a double integral over the enclosed region.",
   ],
-  items: [
+  items: inTopic('Vector calculus', [
     concept('Vector fields', 'F', 1, 'A vector field assigns a vector to every point in the plane or in space.',
       'A vector field attaches an arrow to every point.'),
     concept('Divergence', '∇·F', 1, 'It measures how much the field spreads out from a point.',
@@ -121,7 +127,7 @@ const week9: SampleDoc = {
     concept('Double integrals', '∬', 3, 'a difficult line integral can be traded for a double integral over the enclosed region'),
     // Deliberately unsupported: this sentence is not on page 3, so grounding drops it.
     concept("Stokes' theorem", 'Stokes', 3, "Stokes' theorem generalizes Green's theorem to surfaces in space."),
-  ],
+  ]),
 }
 
 /** Offered inside the calculus sample as extra material the student can add. */
@@ -134,7 +140,7 @@ const officeHours: SampleDoc = {
   pages: [
     'So the divergence theorem is the three-dimensional version of what we did last week. It says the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside. Flux is a surface integral: you add up how much of the field passes through each little patch of the surface, and each patch is set up as a double integral over the parameters. Remember that divergence measures how much the field spreads out from a point, so the theorem is just adding up all that spreading.',
   ],
-  items: [
+  items: inTopic('Vector calculus', [
     concept('Surface integrals', '∯', 1, 'Flux is a surface integral: you add up how much of the field passes through each little patch of the surface',
       'A surface integral adds up how much of a field passes through a surface.'),
     link('Surface integrals', 'Vector fields', 1, 'you add up how much of the field passes through each little patch of the surface'),
@@ -145,7 +151,7 @@ const officeHours: SampleDoc = {
     link('Divergence theorem', 'Triple integrals', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
     link('Divergence theorem', 'Divergence', 1, 'the flux of F out through a closed surface equals the triple integral of the divergence of F over the solid inside'),
     concept('Divergence', '∇·F', 1, 'divergence measures how much the field spreads out from a point'),
-  ],
+  ]),
 }
 
 /** The same text and proposals as the Python backend's `/api/demo`. */
@@ -175,7 +181,7 @@ export type SampleNotebook = {
   docs: SampleDoc[]
   packs: SampleDoc[]
   /** Things the student added by hand: concepts with no source, and links to them. */
-  manual: { created_at: string; concepts: { title: string; symbol: string; comment: string }[]; links: [string, string][] }
+  manual: { created_at: string; concepts: { title: string; symbol: string; comment: string; topic?: string }[]; links: [string, string][] }
   target: string | null
 }
 
@@ -188,7 +194,7 @@ export const SAMPLE_NOTEBOOKS: SampleNotebook[] = [
     manual: {
       created_at: '2026-10-27T03:40:00Z',
       concepts: [{
-        title: 'Limits', symbol: 'lim',
+        title: 'Limits', symbol: 'lim', topic: 'Single-variable calculus',
         comment: 'Not in the slides. The professor assumes it from Calc I, so review it before the midterm.',
       }],
       links: [['Derivatives', 'Limits'], ['Integrals', 'Limits']],

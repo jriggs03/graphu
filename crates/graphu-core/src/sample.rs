@@ -23,6 +23,9 @@ pub(crate) struct ManualConcept {
     pub title: String,
     pub symbol: String,
     pub comment: String,
+    /// The topic it sits in, as a path. Empty for the top level.
+    #[serde(default)]
+    pub topic: String,
 }
 
 #[derive(Deserialize)]

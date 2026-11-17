@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphu · Topics inside topics (prototype)</title>
+<style>
+  :root{
+    --bg:#f8f7f4; --ink:#22211f; --muted:#7a776f; --faint:#b9b5ac;
+    --node:#ecebe7; --node-stroke:#dad7d0; --edge:#d3cfc6; --edge-strong:#9c978c;
+    --accent:#c2785c; --accent-ink:#fff; --accent-soft:#f3e3db;
+    --green:#4f8a2e; --green-soft:#e4f0da;
+    --chip:#fff; --chip-stroke:#e4e1da; --code:#efeee9; --dark:#2b2a28;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  header{padding:20px 28px 4px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+  .brand{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
+  .crumbs button{font:inherit;border:0;background:none;color:var(--muted);padding:2px 4px;border-radius:8px;cursor:pointer}
+  .crumbs button:hover{background:var(--node);color:var(--ink)}
+  .crumbs .here{color:var(--ink)}
+  .crumbs .sep{color:var(--faint);font-weight:400}
+  .search{position:relative;margin-left:auto;width:min(340px,100%)}
+  .search input{width:100%;font:inherit;font-size:15px;padding:9px 12px;border:1px solid var(--chip-stroke);border-radius:12px;background:var(--chip)}
+  .results{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:5;background:#fff;border:1px solid var(--chip-stroke);
+    border-radius:12px;padding:6px;box-shadow:0 10px 30px rgba(40,30,20,.12);max-height:300px;overflow:auto}
+  .results button{display:block;width:100%;text-align:left;font:inherit;border:0;background:none;padding:7px 8px;border-radius:8px;cursor:pointer}
+  .results button:hover{background:var(--node)}
+  .results small{display:block;color:var(--muted);font-size:12.5px}
+  .results .none{padding:8px;color:var(--muted);font-size:14px}
+
+  .goal{padding:8px 28px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-height:44px;font-size:15px}
+  .goal b{font-weight:600}
+  .goal .step{font:inherit;font-size:14px;border:1px solid #cfe3bf;background:var(--green-soft);color:var(--ink);padding:6px 11px;border-radius:10px;cursor:pointer}
+  .goal .step .n{color:var(--green);font-weight:600;margin-right:5px}
+  .goal .step small{color:var(--muted);margin-left:6px}
+  .goal .step.on{background:var(--dark);border-color:var(--dark);color:#fff}
+  .goal .step.on small,.goal .step.on .n{color:#cfccc5}
+  .goal .clear{font:inherit;font-size:13px;border:0;background:none;color:var(--muted);text-decoration:underline;cursor:pointer}
+
+  main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,1fr);gap:16px;padding:6px 28px 28px;align-items:start}
+  @media (max-width:860px){main{grid-template-columns:1fr}}
+  .mapwrap{position:relative;background:#fbfaf8;border:1px solid var(--chip-stroke);border-radius:16px;overflow:hidden}
+  svg#map{width:100%;height:auto;display:block;transition:opacity .18s, transform .18s;transform-origin:50% 50%}
+  svg#map.leaving{opacity:0;transform:scale(1.12)}
+  .up{position:absolute;left:12px;top:12px;font:inherit;font-size:13px;border:1px solid var(--chip-stroke);background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer}
+  .hint{position:absolute;right:12px;top:14px;font-size:12px;color:var(--muted)}
+
+  .node{cursor:pointer;outline:none}
+  .node circle.body{fill:var(--node);stroke:var(--node-stroke);stroke-width:1.2;transition:fill .2s,stroke .2s}
+  .node:hover circle.body,.node:focus-visible circle.body{stroke:var(--edge-strong);stroke-width:2}
+  .node text{pointer-events:none;text-anchor:middle;fill:var(--ink)}
+  .node .sym{font-family:var(--mono)}
+  /* A topic: a node that has a map inside it. Drawn with a second ring and a count. */
+  .node.topic circle.ring{fill:none;stroke:var(--edge-strong);stroke-width:1.4;stroke-dasharray:2 4}
+  .node .count circle{fill:var(--dark)} .node .count text{fill:#fff;font-size:11px;font-weight:600}
+  .node.rel circle.body{stroke:var(--edge-strong);stroke-width:2}
+  .node.need circle.body{stroke:var(--green);stroke-width:3;fill:var(--green-soft)}
+  .node.sel circle.body{fill:var(--accent);stroke:var(--accent)}
+  .node.sel text{fill:var(--accent-ink)}
+  .node.dim{opacity:.35}
+  /* A concept that lives in another topic, shown at the edge so links never just stop. */
+  .node.ghost circle.body{fill:#fff;stroke-dasharray:4 4;stroke:var(--edge-strong)}
+  .node.ghost text{fill:var(--muted)}
+  .node.ghost .where{font-size:9.5px}
+  .edge{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edge.inc{stroke:var(--edge-strong);stroke-width:2.4}
+  .edge.need{stroke:var(--green);stroke-width:4;opacity:.75}
+  .edge.dim{opacity:.3}
+  .edge.out{stroke-dasharray:5 5}
+  .elabel{font-size:10px;fill:var(--muted);text-anchor:middle;paint-order:stroke;stroke:#fbfaf8;stroke-width:4px}
+
+  aside{padding:8px 4px}
+  .where{font-size:13px;color:var(--muted)}
+  .name{display:flex;align-items:center;gap:8px;margin:10px 0 4px;font-size:14px;color:var(--muted)}
+  .name code{font-family:var(--mono);background:var(--code);color:var(--ink);padding:2px 7px;border-radius:6px}
+  aside h2{margin:0 0 10px;font-size:24px;line-height:1.2;letter-spacing:-.01em}
+  .tag{font-size:10px;letter-spacing:.07em;text-transform:uppercase;background:var(--accent-soft);color:#8a4a32;padding:2px 7px;border-radius:999px;vertical-align:middle;font-weight:600}
+  .formula{font-family:var(--mono);background:var(--code);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:15px}
+  .formula small{display:block;font-family:var(--sans);color:var(--muted);font-size:12px;margin-top:4px}
+  blockquote{margin:10px 0;padding:4px 0 4px 12px;border-left:3px solid var(--node-stroke);font-size:15px}
+  blockquote small{display:block;color:var(--muted);font-size:12.5px;margin-top:3px}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 0}
+  .row b{font-size:14px;margin-right:4px}
+  .chip{font:inherit;font-size:14px;border:1px solid var(--chip-stroke);background:var(--chip);border-radius:10px;padding:6px 10px;cursor:pointer}
+  .chip code{font-family:var(--mono);color:var(--muted);margin-right:6px}
+  .chip small{color:var(--muted);margin-left:6px}
+  .chip:hover{border-color:var(--edge-strong)}
+  .primary{font:inherit;font-size:15px;border:0;background:var(--dark);color:#fff;border-radius:10px;padding:9px 14px;cursor:pointer;margin-top:14px}
+  .secondary{font:inherit;font-size:14px;border:1px solid var(--chip-stroke);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;margin:14px 0 0 6px}
+  .note{color:var(--muted);font-size:14px;line-height:1.5}
+  .note li{margin:4px 0}
+  footer{padding:0 28px 28px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">Graphu · prototype · topics inside topics</div>
+    <div class="crumbs" id="crumbs"></div>
+  </div>
+  <div class="search">
+    <input id="q" type="search" placeholder="Search every level…" aria-label="Search every level">
+    <div class="results" id="results" hidden></div>
+  </div>
+</header>
+<div class="goal" id="goal"></div>
+<main>
+  <div class="mapwrap">
+    <svg id="map" role="group" aria-label="Concept map"></svg>
+    <button class="up" id="up" hidden>← Up one level</button>
+    <div class="hint">Click to select · double-click a topic to open it</div>
+  </div>
+  <aside id="panel"></aside>
+</main>
+<footer>Example data, written for this prototype. The slide numbers are illustrative.</footer>
+
+<script>
+/* ------------------------------------------------------------------ data
+   One flat list. `parent` is what makes it recursive: anything that is somebody's parent
+   is a topic and has its own map inside. Links only ever join concepts (the leaves);
+   links between topics are worked out from them. A link [a, b] means "a relies on b". */
+const ITEMS = [
+  // level 1: topics of the graphbook
+  { id:'nn',  label:'Neural networks', sym:'σ',   parent:null },
+  { id:'seq', label:'Sequence models', sym:'hₜ',  parent:null },
+  { id:'att', label:'Attention',       sym:'QKᵀ', parent:null },
+  { id:'tr',  label:'Transformers',    sym:'N×',  parent:null },
+  { id:'app', label:'Applications',    sym:'→',   parent:null },
+
+  { id:'neuron',  parent:'nn', label:'Neuron',          sym:'w·x+b', head:'A neuron weighs its inputs, adds them up and squashes the result.', f:'y = σ(w·x + b)', q:'Each unit computes a weighted sum of its inputs followed by a nonlinearity.', p:4 },
+  { id:'softmax', parent:'nn', label:'Softmax',         sym:'softmax', head:'Softmax turns a list of scores into probabilities that sum to 1.', f:'softmax(z)ᵢ = e^zᵢ / Σ e^zⱼ', q:'The softmax output sums to 1 and can be read as a probability distribution.', p:9 },
+  { id:'loss',    parent:'nn', label:'Loss function',   sym:'L',     head:'The loss is one number saying how wrong the network currently is.', f:'L = −Σ y log ŷ', q:'Cross-entropy compares the predicted distribution with the true label.', p:11 },
+  { id:'backprop',parent:'nn', label:'Backpropagation', sym:'∂L/∂w', head:'Backpropagation works out how each weight should change to reduce the loss.', f:'∂L/∂w', q:'Gradients are propagated backwards through the network using the chain rule.', p:14 },
+  { id:'embed',   parent:'nn', label:'Embeddings',      sym:'E[x]',  head:'An embedding turns a word or token into a vector the network can use.', f:'', q:'Each token is mapped to a learned vector called its embedding.', p:18 },
+
+  { id:'rnn',        parent:'seq', label:'Recurrent network', sym:'RNN', head:'An RNN reads a sequence one step at a time, carrying a memory forward.', f:'hₜ = f(hₜ₋₁, xₜ)', q:'The hidden state summarizes everything the network has read so far.', p:3 },
+  { id:'seq2seq',    parent:'seq', label:'Encoder–decoder',   sym:'S2S', head:'One network reads the input, a second one writes the output.', f:'', q:'The encoder compresses the source sentence; the decoder generates the translation.', p:7 },
+  { id:'bottleneck', parent:'seq', label:'Context bottleneck', sym:'c',  head:'Squeezing a whole sentence into one vector loses detail on long inputs.', f:'', q:'A single fixed-length vector must carry the entire meaning of the input.', p:9 },
+
+  { id:'qkv',  parent:'att', label:'Query, key, value',   sym:'Q K V', head:'A query is matched against keys to decide which values to read.', f:'', q:'Queries come from the user, keys describe the data, values are the data itself.', p:18 },
+  { id:'dot',  parent:'att', label:'Dot-product search',  sym:'h·v',   head:'Two vectors that point the same way have a large dot product.', f:'h · v₂ > h · v₁', q:'The dot product measures how similar the query is to each key.', p:26 },
+  { id:'sdp',  parent:'att', label:'Scaled dot-product attention', sym:'QKᵀ/√dₖ', head:'Attention scores every key against every query and blends the values by those scores.', f:'Attention(Q,K,V) = softmax(QKᵀ/√dₖ) V', q:'Each row of the attention matrix sums to 1.', p:33 },
+  { id:'self', parent:'att', label:'Self-attention',      sym:'x→x',   head:'In self-attention a sequence looks at itself: queries, keys and values all come from the same input.', f:'', q:'Queries, keys and values are all projections of the same input sequence.', p:36 },
+  { id:'cross',parent:'att', label:'Cross-attention',     sym:'x→y',   head:'In cross-attention one sequence asks questions of another.', f:'', q:'Queries come from the question; keys and values come from the reference text.', p:34 },
+  { id:'mh',   parent:'att', label:'Multi-head attention', sym:'h×',   head:'Several attention heads run side by side, each free to look for something different.', f:'', q:'Each head has different learned projections and can attend to different things.', p:38 },
+
+  { id:'pos',   parent:'tr', label:'Positional encoding', sym:'+pos' },   // a topic inside a topic
+  { id:'perm',    parent:'pos', label:'Permutation invariance', sym:'π',  head:'Attention alone cannot tell what order the words came in.', f:'', q:'The attention block is permutation invariant: it does not capture the order of the inputs.', p:45 },
+  { id:'learned', parent:'pos', label:'Learned positions',      sym:'P[n]', head:'One fix: learn a vector for each position and add it to the embedding.', f:'', q:'Add learnable position encoding vectors to the input embedding vectors.', p:48 },
+  { id:'sin',     parent:'pos', label:'Sinusoidal encoding',    sym:'sin', head:'Another fix: describe each position with waves of different speeds, like clock hands.', f:'rₙᵢ = sin(n / L^(i/D))', q:'Similar to hands on the clock moving at different speeds.', p:51 },
+  { id:'norm',  parent:'tr', label:'Layer normalization', sym:'LN',  head:'Layer normalization rescales each position so training stays stable.', f:'', q:'Layer normalization: normalize each timestep over the channels.', p:60 },
+  { id:'block', parent:'tr', label:'Transformer block',   sym:'N×',  head:'A block is attention followed by a small network, repeated many times.', f:'', q:'Each block applies multi-head attention and then a feed-forward layer.', p:39 },
+  { id:'mask',  parent:'tr', label:'Masking',             sym:'▟',   head:'A mask stops the model from peeking at words it has not written yet.', f:'', q:'When training a generative model, the attention block can “cheat” by looking ahead.', p:56 },
+  { id:'dec',   parent:'tr', label:'Decoder-only model',  sym:'GPT', head:'A stack of masked blocks that writes text one token at a time.', f:'', q:'Masked multi-head attention followed by a feed-forward layer, repeated M times.', p:54 },
+
+  { id:'bert', parent:'app', label:'BERT',               sym:'BERT', head:'BERT reads a whole sentence at once to build a representation of each word.', f:'', q:'Bidirectional Encoder Representations from Transformers.', p:68 },
+  { id:'vit',  parent:'app', label:'Vision Transformer', sym:'ViT',  head:'A picture is cut into patches and the patches are treated like words.', f:'', q:'An image is split into fixed-size patches, each linearly embedded.', p:71 },
+  { id:'mae',  parent:'app', label:'Masked autoencoder', sym:'MAE',  head:'Hide most of an image and train the model to fill it back in.', f:'', q:'Masked autoencoders are scalable vision learners.', p:74 },
+];
+const LINKS = [
+  ['softmax','neuron'],['loss','softmax'],['backprop','loss'],['embed','neuron'],
+  ['rnn','neuron'],['rnn','backprop'],['seq2seq','rnn'],['seq2seq','embed'],['bottleneck','seq2seq'],
+  ['qkv','bottleneck'],['dot','qkv'],['dot','embed'],['sdp','dot'],['sdp','softmax'],
+  ['self','sdp'],['cross','sdp'],['cross','seq2seq'],['mh','self'],
+  ['perm','self'],['learned','perm'],['learned','embed'],['sin','perm'],
+  ['norm','neuron'],['block','mh'],['block','norm'],['block','sin'],['mask','self'],['dec','block'],['dec','mask'],
+  ['bert','block'],['vit','block'],['vit','embed'],['mae','vit'],['mae','mask'],
+];
+const BOOK = 'Deep Learning';
+const SOURCE = '9.1 Attention.pdf';
+
+/* ------------------------------------------------------------------ the tree */
+const byId = new Map(ITEMS.map(item => [item.id, item]));
+const kids = id => ITEMS.filter(item => item.parent === id);
+const isTopic = id => ITEMS.some(item => item.parent === id);
+/** The path from the top down to an item: ['tr', 'pos', 'sin']. */
+const path = id => { const out = []; for (let at = id; at; at = byId.get(at).parent) out.unshift(at); return out; };
+const pathText = id => [BOOK, ...path(id).slice(0, -1).map(step => byId.get(step).label)].join(' › ');
+/** Every concept (leaf) inside a topic, however deep. */
+const leavesOf = id => isTopic(id) ? kids(id).flatMap(child => leavesOf(child.id)) : [id];
+/** Which child of `level` an item sits under, or null if it is somewhere else. */
+const under = (level, id) => { const steps = path(id); const at = level ? steps.indexOf(level) : -1; return level && at < 0 ? null : steps[at + 1] ?? null; };
+
+/* ------------------------------------------------------------------ state */
+let level = null;        // the topic whose inside is on screen (null = the whole graphbook)
+let selected = null;     // id of the selected node at this level
+let goal = null;         // the concept the student wants to learn
+
+/** Need(t): everything t relies on, directly or not. Works across every level. */
+function need(target) {
+  const seen = new Set([target]); const queue = [target];
+  while (queue.length) { const at = queue.pop(); for (const [from, to] of LINKS) if (from === at && !seen.has(to)) { seen.add(to); queue.push(to); } }
+  return seen;
+}
+function route(target) {
+  const ids = [...need(target)]; const depth = new Map();
+  const visit = id => { if (depth.has(id)) return depth.get(id); depth.set(id, 0);
+    let value = 0; for (const [from, to] of LINKS) if (from === id) value = Math.max(value, visit(to) + 1); depth.set(id, value); return value; };
+  ids.forEach(visit);
+  return ids.sort((a, b) => depth.get(a) - depth.get(b) || byId.get(a).label.localeCompare(byId.get(b).label));
+}
+
+/* ------------------------------------------------------------------ one level's map
+   What is drawn at a level:
+     nodes   the children of the level (topics and concepts)
+     ghosts  concepts in other topics that something here links to
+     edges   every concept link, rolled up to whichever node contains each end */
+function scene() {
+  const nodes = kids(level).map(item => ({ id:item.id, ghost:false }));
+  const ghosts = new Map(); const edges = new Map();
+  for (const [from, to] of LINKS) {
+    const a = under(level, from), b = under(level, to);
+    if (a && b && a !== b) add(a, b, false);
+    else if (a && !b) { ghosts.set(to, 'before'); add(a, to, true); }
+    else if (!a && b) { if (!ghosts.has(from)) ghosts.set(from, 'after'); add(from, b, true); }
+  }
+  function add(from, to, out) { const key = from + '>' + to; const edge = edges.get(key) ?? { from, to, out, n:0 }; edge.n++; edges.set(key, edge); }
+  for (const [id, side] of ghosts) nodes.push({ id, ghost:true, side });
+  return { nodes, edges:[...edges.values()] };
+}
+
+function place(nodes, edges) {
+  const real = nodes.filter(node => !node.ghost).map(node => node.id);
+  const depth = new Map();
+  const visit = id => { if (depth.has(id)) return depth.get(id); depth.set(id, 0);
+    let value = 0; for (const edge of edges) if (edge.from === id && real.includes(edge.to)) value = Math.max(value, visit(edge.to) + 1); depth.set(id, value); return value; };
+  real.forEach(visit);
+  const last = Math.max(0, ...depth.values());
+  const columns = new Map();
+  for (const node of nodes) {
+    const column = node.ghost ? (node.side === 'before' ? -1 : last + 1) : depth.get(node.id);
+    columns.set(column, [...(columns.get(column) ?? []), node]);
+  }
+  const pos = new Map();
+  for (const [column, list] of columns) list.forEach((node, index) => {
+    const stagger = column % 2 ? 26 : -26;
+    pos.set(node.id, { x: column * 190, y: (index - (list.length - 1) / 2) * 128 + (list.length > 1 ? 0 : stagger) });
+  });
+  return pos;
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+const el = (name, attrs = {}, text) => { const node = document.createElementNS(SVG, name); for (const key in attrs) node.setAttribute(key, attrs[key]); if (text !== undefined) node.textContent = text; return node; };
+function wrap(label) { const words = label.split(' '); if (words.length === 1 || label.length <= 10) return [label];
+  let best = [label], width = label.length;
+  for (let cut = 1; cut < words.length; cut++) { const pair = [words.slice(0, cut).join(' '), words.slice(cut).join(' ')]; const w = Math.max(pair[0].length, pair[1].length); if (w < width) { best = pair; width = w; } }
+  return best; }
+
+function draw() {
+  const map = document.getElementById('map'); map.replaceChildren();
+  const { nodes, edges } = scene(); const pos = place(nodes, edges);
+  const needSet = goal ? need(goal) : new Set();
+  // A topic is on the path when any concept inside it is.
+  const onPath = id => leavesOf(id).some(leaf => needSet.has(leaf));
+  const radius = node => node.ghost ? 30 : isTopic(node.id) ? 52 : 42;
+  const info = new Map(nodes.map(node => [node.id, node]));
+  const related = new Set(selected ? [selected] : []);
+  for (const edge of edges) { if (edge.from === selected) related.add(edge.to); if (edge.to === selected) related.add(edge.from); }
+
+  const xs = [...pos.values()].map(point => point.x), ys = [...pos.values()].map(point => point.y);
+  // Leave room around the nodes, and never let a small level fill the screen with two huge circles.
+  const wide = Math.max(Math.max(...xs) - Math.min(...xs) + 200, 760), tall = Math.max(Math.max(...ys) - Math.min(...ys) + 220, 460);
+  const box = [(Math.min(...xs) + Math.max(...xs) - wide) / 2, (Math.min(...ys) + Math.max(...ys) - tall) / 2, wide, tall];
+  map.setAttribute('viewBox', box.join(' '));
+  const defs = el('defs');
+  for (const [name, color] of [['soft','#c9c5bb'],['strong','#9c978c'],['need','#4f8a2e']]) {
+    const marker = el('marker', { id:'arrow-' + name, viewBox:'0 0 10 10', refX:9, refY:5, markerWidth:11, markerHeight:11, orient:'auto', markerUnits:'userSpaceOnUse' });
+    marker.append(el('path', { d:'M0,0 L10,5 L0,10 z', fill:color })); defs.append(marker);
+  }
+  map.append(defs);
+
+  for (const edge of edges) {
+    const a = pos.get(edge.to), b = pos.get(edge.from);              // drawn prerequisite → dependent
+    const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1;
+    const padA = radius(info.get(edge.to)) + 3, padB = radius(info.get(edge.from)) + 5;
+    const green = goal && onPath(edge.from) && onPath(edge.to);
+    const inc = selected && (edge.from === selected || edge.to === selected);
+    const line = el('line', { x1:a.x + dx / length * padA, y1:a.y + dy / length * padA, x2:b.x - dx / length * padB, y2:b.y - dy / length * padB,
+      class:['edge', edge.out && 'out', green && 'need', inc && 'inc', (selected && !inc && !green) && 'dim'].filter(Boolean).join(' '),
+      'marker-end':`url(#arrow-${green ? 'need' : inc ? 'strong' : 'soft'})` });
+    map.append(line);
+    if (edge.n > 1) map.append(el('text', { class:'elabel', x:(a.x + b.x) / 2, y:(a.y + b.y) / 2 - 5 }, edge.n + ' links'));
+  }
+
+  for (const node of nodes) {
+    const item = byId.get(node.id), point = pos.get(node.id), r = radius(node), topic = isTopic(node.id) && !node.ghost;
+    const group = el('g', { transform:`translate(${point.x} ${point.y})`, tabindex:0, role:'button', 'aria-label':item.label,
+      class:['node', topic && 'topic', node.ghost && 'ghost', node.id === selected && 'sel', related.has(node.id) && 'rel',
+        goal && onPath(node.id) && 'need', (selected && !related.has(node.id) && !(goal && onPath(node.id))) && 'dim'].filter(Boolean).join(' ') });
+    if (topic) group.append(el('circle', { class:'ring', r:r + 7 }));
+    group.append(el('circle', { class:'body', r }));
+    const lines = wrap(item.label); const symSize = Math.min(node.ghost ? 12 : topic ? 20 : 16, 1.5 * r / (item.sym.length * 0.62));
+    const size = node.ghost ? 10 : Math.min(topic ? 13 : 12, 1.7 * r / (Math.max(...lines.map(text => text.length)) * 0.55));
+    const top = -(symSize + lines.length * size * 1.15) / 2;
+    group.append(el('text', { class:'sym', y:top + symSize * 0.82, 'font-size':symSize.toFixed(1) }, item.sym));
+    lines.forEach((text, index) => group.append(el('text', { y:top + symSize + size * (1.15 * index + 0.95), 'font-size':size.toFixed(1) }, text)));
+    if (node.ghost) group.append(el('text', { class:'where', y:r + 13 }, '↗ in ' + byId.get(item.parent).label));
+    if (topic) { const badge = el('g', { class:'count', transform:`translate(${r * 0.74} ${-r * 0.74})` });
+      badge.append(el('circle', { r:11 }), el('text', { y:4 }, leavesOf(node.id).length)); group.append(badge); }
+    group.addEventListener('click', () => node.ghost ? goTo(node.id) : select(node.id));
+    group.addEventListener('dblclick', () => { if (topic) open(node.id); });
+    group.addEventListener('keydown', event => { if (event.key === 'Enter') topic ? open(node.id) : node.ghost ? goTo(node.id) : select(node.id); });
+    map.append(group);
+  }
+  map.onclick = event => { if (event.target === map) select(null); };
+  crumbs(); panel(); goalBar();
+  document.getElementById('up').hidden = level === null;
+}
+
+/* ------------------------------------------------------------------ moving around */
+function select(id) { selected = id; draw(); }
+/** Go inside a topic (or back out), with a short zoom so it reads as "entering". */
+function open(id) {
+  const map = document.getElementById('map'); map.classList.add('leaving');
+  setTimeout(() => { level = id; selected = null; draw(); map.classList.remove('leaving'); }, 170);
+}
+/** Jump straight to a concept wherever it lives: open its topic and select it. */
+function goTo(id) {
+  const item = byId.get(id); const map = document.getElementById('map');
+  if (item.parent === level) { select(id); return; }
+  map.classList.add('leaving');
+  setTimeout(() => { level = item.parent; selected = id; draw(); map.classList.remove('leaving'); }, 170);
+}
+document.getElementById('up').onclick = () => open(byId.get(level).parent);
+
+function crumbs() {
+  const bar = document.getElementById('crumbs'); bar.replaceChildren();
+  const steps = [null, ...(level ? path(level) : [])];
+  steps.forEach((step, index) => {
+    const button = document.createElement('button'); button.textContent = step ? byId.get(step).label : BOOK;
+    if (index === steps.length - 1) button.className = 'here'; else button.onclick = () => open(step);
+    bar.append(button);
+    if (index < steps.length - 1) { const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '›'; bar.append(sep); }
+  });
+}
+
+/* ------------------------------------------------------------------ side panel */
+const chip = id => { const item = byId.get(id); const here = item.parent === level;
+  return `<button class="chip" data-go="${id}"><code>${item.sym}</code>${item.label}${here ? '' : `<small>in ${byId.get(item.parent)?.label ?? BOOK}</small>`}</button>`; };
+function panel() {
+  const box = document.getElementById('panel'); const item = selected && byId.get(selected);
+  if (!item) {
+    const here = level ? byId.get(level).label : BOOK;
+    box.innerHTML = `<div class="where">${level ? pathText(level) : 'Graphbook'}</div><h2 style="margin-top:10px">${here}</h2>
+      <ul class="note">
+        <li>A node with a <b>dotted ring and a number</b> is a topic: it has its own map inside. Double-click to open it.</li>
+        <li><b>Dashed, faded nodes</b> at the edge are concepts that live in another topic. Click one to jump there.</li>
+        <li>A line between two topics stands for every link between the concepts inside them.</li>
+        <li>Search and “I want to learn this” work across every level at once.</li>
+      </ul>`;
+    return;
+  }
+  if (isTopic(item.id)) {
+    const inside = kids(item.id), leaves = leavesOf(item.id);
+    const outside = id => !leaves.includes(id);
+    const before = [...new Set(LINKS.filter(([from, to]) => leaves.includes(from) && outside(to)).map(([, to]) => to))];
+    const after = [...new Set(LINKS.filter(([from, to]) => leaves.includes(to) && outside(from)).map(([from]) => from))];
+    box.innerHTML = `<div class="where">${pathText(item.id)}</div>
+      <div class="name"><code>${item.sym}</code>Topic · ${leaves.length} concepts inside</div><h2>${item.label}</h2>
+      <div class="row"><b>Inside</b>${inside.map(child => chip(child.id)).join('')}</div>
+      ${before.length ? `<div class="row"><b>Needs from outside</b>${before.map(chip).join('')}</div>` : ''}
+      ${after.length ? `<div class="row"><b>Used outside by</b>${after.map(chip).join('')}</div>` : ''}
+      <button class="primary" id="open">Open this topic →</button>`;
+    document.getElementById('open').onclick = () => open(item.id);
+  } else {
+    const before = LINKS.filter(([from]) => from === item.id).map(([, to]) => to);
+    const after = LINKS.filter(([, to]) => to === item.id).map(([from]) => from);
+    box.innerHTML = `<div class="where">${pathText(item.id)}</div>
+      <div class="name"><code>${item.sym}</code>${item.label}</div>
+      <h2>${item.head} <span class="tag">AI summary</span></h2>
+      ${item.f ? `<div class="formula">${item.f}<small>slide ${item.p} · ${SOURCE}</small></div>` : ''}
+      <blockquote>“${item.q}”<small>${SOURCE} · p. ${item.p}</small></blockquote>
+      ${before.length ? `<div class="row"><b>Learn first</b>${before.map(chip).join('')}</div>` : ''}
+      ${after.length ? `<div class="row"><b>Used by</b>${after.map(chip).join('')}</div>` : ''}
+      <button class="primary" id="want">${goal === item.id ? 'This is your goal' : 'I want to learn this'}</button>`;
+    document.getElementById('want').onclick = () => { goal = item.id; draw(); };
+  }
+  box.querySelectorAll('[data-go]').forEach(button => button.onclick = () => isTopic(button.dataset.go) ? open(button.dataset.go) : goTo(button.dataset.go));
+}
+
+function goalBar() {
+  const bar = document.getElementById('goal');
+  if (!goal) { bar.innerHTML = '<span style="color:var(--muted)">Select a concept and choose “I want to learn this” to see the path through every topic.</span>'; return; }
+  bar.innerHTML = `<b>To learn ${byId.get(goal).label}:</b>` + route(goal).map((id, index) =>
+    `<button class="step${id === selected ? ' on' : ''}" data-go="${id}"><span class="n">${index + 1}.</span>${byId.get(id).label}<small>${byId.get(byId.get(id).parent).label}</small></button>`).join('')
+    + '<button class="clear" id="clear">clear</button>';
+  bar.querySelectorAll('[data-go]').forEach(button => button.onclick = () => goTo(button.dataset.go));
+  document.getElementById('clear').onclick = () => { goal = null; draw(); };
+}
+
+/* ------------------------------------------------------------------ search, across every level */
+const q = document.getElementById('q'), results = document.getElementById('results');
+q.oninput = () => {
+  const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) { results.hidden = true; return; }
+  const found = ITEMS.map(item => {
+    const name = item.label.toLowerCase(); const rest = [item.sym, item.head, item.f, item.q].join(' ').toLowerCase();
+    if (!words.every(word => name.includes(word) || rest.includes(word))) return null;
+    return { item, score: words.every(word => name.includes(word)) ? (name.startsWith(words[0]) ? 0 : 1) : 2 };
+  }).filter(Boolean).sort((a, b) => a.score - b.score);
+  results.hidden = false;
+  results.innerHTML = found.length ? found.map(({ item }) =>
+    `<button data-go="${item.id}"><b>${item.label}</b>${isTopic(item.id) ? ' <span class="tag">topic</span>' : ''}<small>${pathText(item.id)}</small></button>`).join('')
+    : '<div class="none">No matches</div>';
+  results.querySelectorAll('[data-go]').forEach(button => button.onclick = () => { results.hidden = true; q.value = ''; goTo(button.dataset.go); });
+};
+q.onkeydown = event => { if (event.key === 'Enter') results.querySelector('[data-go]')?.click(); if (event.key === 'Escape') { q.value = ''; results.hidden = true; } };
+
+draw();
+</script>
+</body>
+</html>

@@ -44,7 +44,12 @@ export type Concept = {
   heading: string
   /** A formula or line of code that was found on the cited page. */
   snippet: { text: string; page: number; source: string } | null
+  /** The topic this concept sits inside: the id of another concept or of a `Topic`. `null` is the top level. */
+  parent: string | null
 }
+
+/** A named group of concepts that is not itself a concept from the material (a section of a deck). */
+export type Topic = { id: string; label: string; parent: string | null; status: 'pending' | 'approved' }
 
 /** `from` relies on `to`: `from` is the dependent, `to` is the prerequisite. */
 export type Edge = {
@@ -99,6 +104,8 @@ export type Notebook = {
   id: string
   title: string
   concepts: Concept[]
+  /** Groups that hold concepts. A concept is also a topic when other concepts name it as their parent. */
+  topics: Topic[]
   edges: Edge[]
   claims: Claim[]
   batches: Batch[]
@@ -162,6 +169,8 @@ export interface Backend {
   setTarget(id: string, concept: string | null): Promise<Notebook>
   /** Choose the short symbol drawn in a concept's node. Empty goes back to the proposed one. */
   setSymbol(id: string, concept: string, symbol: string): Promise<Notebook>
+  /** Move a concept or a topic into another topic. `null` moves it to the top level. */
+  setParent(id: string, concept: string, parent: string | null): Promise<Notebook>
   resetSample(): Promise<void>
 }
 

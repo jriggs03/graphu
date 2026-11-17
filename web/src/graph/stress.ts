@@ -1,11 +1,13 @@
 /**
  * A made-up graphbook of any size, for checking that large graphs stay fast.
- * Open `#/n/stress-800` to see one with 800 concepts. Nothing here is stored or sent anywhere.
+ * Open `#/n/stress-800` to see one with 800 concepts, or `#/n/stress-800-nested` for the same
+ * concepts sorted into topics inside topics. Nothing here is stored or sent anywhere.
  */
-import type { Concept, Edge, Notebook } from '../api'
+import type { Concept, Edge, Notebook, Topic } from '../api'
 
 export function stressNotebook(id: string): Notebook | null {
-  const count = Number(/^stress-(\d+)$/.exec(id)?.[1])
+  const [, size, nested] = /^stress-(\d+)(-nested)?$/.exec(id) ?? []
+  const count = Number(size)
   if (!count) return null
   let seed = 7
   const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
@@ -17,7 +19,14 @@ export function stressNotebook(id: string): Notebook | null {
   const concepts: Concept[] = Array.from({ length: count }, (_, n) => ({
     id: `topic ${n}`, label: `Topic ${n}`, symbol: `T${n}`, status: 'approved', user_added: false,
     evidence: evidence(n), comment: '', visual: null, heading: `Topic ${n} is a made-up concept for testing.`, snippet: null,
+    // Nested: each layer of concepts is a section, and every six sections make a unit.
+    parent: nested ? `section ${Math.floor(n / perLayer)}` : null,
   }))
+  const sections = Math.ceil(count / perLayer)
+  const topics: Topic[] = !nested ? [] : [
+    ...Array.from({ length: Math.ceil(sections / 6) }, (_, n): Topic => ({ id: `unit ${n}`, label: `Unit ${n + 1}`, parent: null, status: 'approved' })),
+    ...Array.from({ length: sections }, (_, n): Topic => ({ id: `section ${n}`, label: `Section ${n + 1}`, parent: `unit ${Math.floor(n / 6)}`, status: 'approved' })),
+  ]
   const edges: Edge[] = []
   for (let n = perLayer; n < count; n++) {
     const layer = Math.floor(n / perLayer)
@@ -34,7 +43,7 @@ export function stressNotebook(id: string): Notebook | null {
     }
   }
   return {
-    id, title: `Stress test (${count} concepts)`, concepts, edges, claims: [], target: null,
+    id, title: `Stress test (${count} concepts)`, concepts, topics, edges, claims: [], target: null,
     batches: [{ id: '1', kind: 'sample', name: 'Stress test.pdf', context: '', created_at: '', undone: false, dropped: 0, note: '' }],
     sources: [{ id: 'stress', name: 'Stress test.pdf', batch_id: '1', pages: Array.from({ length: 40 }, (_, n) => `Slide ${n + 1} of the stress test.`) }],
   }
